@@ -405,6 +405,7 @@ void parse_directive(char *buf) {
     }
     buf++;
   }
+  currline = line + 1;
   while (*buf != '\0') {
     if (*buf == '"') {
       buf++;
@@ -424,7 +425,6 @@ void parse_directive(char *buf) {
     return;
   }
   currfilepos = sstore_str(file, strlen(file));
-  currline = line;
 }
 
 
