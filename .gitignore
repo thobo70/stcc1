@@ -1,0 +1,6 @@
+.depend
+bin/
+obj/
+tdir/
+.vscode/
+cleanconfigure.sh
