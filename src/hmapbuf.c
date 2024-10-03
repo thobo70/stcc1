@@ -133,7 +133,8 @@ void HBAdd(HBNode *node) {
     HMapIdx_t hidx = HMAP_IDX(node->idx);
     node->hnext = hbhtab[hidx];
     node->hprev = NULL;
-    hbhtab[hidx]->hprev = node;
+    if (node->hnext != NULL)
+        node->hnext->hprev = node;
     hbhtab[hidx] = node;
 }
 
@@ -143,19 +144,14 @@ void HBRemove(HBNode *node) {
     if (node == NULL) {
         return;     // @todo: error handling
     }
-    if (node->hprev == NULL && node->hnext == NULL) {
-        return;     // was not in hash table
-    }
     HMapIdx_t hidx = HMAP_IDX(node->idx);
     if (hbhtab[hidx] == node) {
-        if (node->hnext == node) {
-            hbhtab[hidx] = NULL;
-        } else {
-            hbhtab[hidx] = node->hnext;
-        }
+        hbhtab[hidx] = node->hnext;
     }
-    node->hprev->hnext = node->hnext;
-    node->hnext->hprev = node->hprev;
+    if (node->hprev != NULL)
+        node->hprev->hnext = node->hnext;
+    if (node->hnext != NULL)
+        node->hnext->hprev = node->hprev;
     node->hnext = NULL;
     node->hprev = NULL;
 }
@@ -193,13 +189,14 @@ void HBTouched(HBNode *node) {
 
 
 void HBEnd(void) {
+    if (hbfree != NULL)
+        hbfree->lprev->lnext = NULL;
     while (hbfree != NULL) {
         HBStore(hbfree);
         hbfree = hbfree->lnext;
     }
-    if (hblast == NULL) {
+    if (hblast == NULL)
         return;
-    }
     hblast->lprev->lnext = NULL;
     while (hblast != NULL) {
         HBStore(hblast);
