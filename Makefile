@@ -93,6 +93,30 @@ $(DOCDIR)/html/index.html: $(DOCDIR) Doxyfile $(SRC)
 
 doc: $(DOCDIR)/html/index.html
 
+# Code quality check with cpplint
+lint:
+	@echo "Running cpplint on all source files..."
+	@find $(SRCDIR) -name "*.c" -o -name "*.h" | xargs cpplint 2>&1 | tee lint.log || true
+	@echo ""
+	@if grep -q "Total errors found:" lint.log; then \
+		errors=$$(grep "Total errors found:" lint.log | tail -1 | sed 's/.*Total errors found: //'); \
+		echo "📊 Code Quality Summary:"; \
+		echo "   Total cpplint warnings: $$errors"; \
+		if [ "$$errors" -gt 600 ]; then \
+			echo "   Status: ⚠️  Many issues (>600)"; \
+		elif [ "$$errors" -gt 300 ]; then \
+			echo "   Status: 🔶 Some issues ($$errors)"; \
+		elif [ "$$errors" -gt 100 ]; then \
+			echo "   Status: 🟡 Minor issues ($$errors)"; \
+		else \
+			echo "   Status: ✅ Good quality (<100 issues)"; \
+		fi; \
+		echo "   See lint.log for details"; \
+	else \
+		echo "✅ No cpplint warnings found!"; \
+	fi
+	@echo ""
+
 # Create the output directories
 $(OBJDIR):
 	mkdir -p $(OBJDIR)
@@ -159,7 +183,7 @@ $(OBJDIR)/ast_builder.o: $(AST_SRC)/ast_builder.c
 
 # Clean up build files
 clean:
-	rm -fr $(OBJDIR) $(BINDIR) $(TESTDIR) $(DOCDIR) .depend
+	rm -fr $(OBJDIR) $(BINDIR) $(TESTDIR) $(DOCDIR) .depend lint.log
 
 test-basic: all
 	rm -rf $(TESTDIR)
@@ -282,4 +306,4 @@ test: all
 	@echo "   - Large preprocessed file: $(TESTDIR)/test4/"
 
 # Phony targets
-.PHONY: all clean doc test-basic test
+.PHONY: all clean doc lint test-basic test

@@ -24,9 +24,8 @@ This document describes the reorganized source code structure for the STCC1 smal
 ### `/src/parser/` - Syntax Analysis  
 **Purpose**: Parsing and syntax tree generation
 - `cc1.c` - Enhanced main parser with error handling
+- `cc1t.c` - Parser test and development utility
 - `parse.y` - Yacc/Bison grammar specification
-- `parser.c` - Basic parser implementation
-- `enhanced_parser.c` - Modular parser with advanced features
 - `modular_compiler.c` - Integrated compilation pipeline
 
 **Memory Strategy**: Memory-efficient AST generation with file-backed storage

@@ -22,9 +22,11 @@ The compiler consists of several phases:
 ### Memory Management Strategy
 
 - **hmapbuf**: Hash map buffer with LRU eviction for AST/symbol nodes
-- **sstore**: String storage with file backing and memory cache
+- **sstore**: String storage with file backing and memory cache  
 - **tstore**: Token storage with disk persistence
 - **astore**: Abstract Syntax Tree storage system
+- **Enhanced error handling**: Multi-stage error reporting with recovery
+- **Modular AST system**: Visitor pattern for tree traversal and manipulation
 
 ## Building
 
@@ -34,6 +36,9 @@ make clean && make all
 
 # Run tests
 make test
+
+# Check code quality
+make lint  # Optional: if you want to add this target
 
 # Generate documentation
 make doc
@@ -46,12 +51,15 @@ make doc
 - Token storage and management
 - String storage with deduplication  
 - Custom low-memory buffer management
-- Basic AST node creation
+- AST construction and management
+- Enhanced parser with symbol table support
+- Comprehensive error handling system
+- Code quality improvements (591 cpplint warnings reduced from 649)
 
 🚧 **In Progress:**
-- Complete parser implementation
-- Full C grammar support
-- Enhanced error handling
+- Full C grammar support completion
+- Advanced error recovery mechanisms
+- Memory optimization refinements
 
 ❌ **Planned:**
 - Code generation phase
@@ -102,7 +110,15 @@ This project follows a specific memory-conscious development approach:
 1. **Memory First**: All changes must consider memory impact
 2. **Measure Everything**: Use built-in memory tracking tools
 3. **Test Early**: Run `make test` frequently to check memory usage
-4. **Document Decisions**: Explain memory trade-offs in code comments
+4. **Code Quality**: Maintain cpplint compliance (currently 591 warnings, down from 649)
+5. **Document Decisions**: Explain memory trade-offs in code comments
+
+### Code Quality Standards
+- Use proper header guard naming (`SRC_PATH_FILENAME_H_`)
+- Fixed-width integer types (`uint16_t`, `int64_t`) instead of `short`/`long`
+- No trailing whitespace
+- 80-character line length limit
+- Comprehensive copyright headers
 
 See [IMPROVEMENTS.md](IMPROVEMENTS.md) for detailed development roadmap.
 

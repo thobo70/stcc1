@@ -4,3 +4,4 @@ obj/
 tdir/
 .vscode/
 cleanconfigure.sh
+lint.log
