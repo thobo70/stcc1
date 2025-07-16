@@ -657,6 +657,33 @@ int main(int argc, char *argv[]) {
     // (AST index 0 is valid, and errors would have exited earlier)
     printf("Parsing completed successfully\n");
 
+    // Transfer AST nodes from HMapBuf to astore
+    printf("Transferring AST nodes to file...\n");
+    int transferred = 0;
+    for (ASTNodeIdx_t idx = 1; idx <= 50; idx++) { // Reasonable upper limit
+        HBNode *hb_node = HBGet(idx, HBMODE_AST);
+        if (hb_node) {
+            // Convert HBNode to ASTNode and save to astore
+            ASTNode ast_node;
+            memset(&ast_node, 0, sizeof(ASTNode));
+            ast_node.type = hb_node->ast.type;
+            ast_node.children = hb_node->ast.children;
+            ast_node.binary = hb_node->ast.binary;
+            ast_node.unary = hb_node->ast.unary;
+            ast_node.conditional = hb_node->ast.conditional;
+            ast_node.compound = hb_node->ast.compound;
+            ast_node.call = hb_node->ast.call;
+            ast_node.token_idx = hb_node->ast.token_idx;
+            ast_node.type_idx = hb_node->ast.type_idx;
+            
+            ASTNodeIdx_t result = astore_add(&ast_node);
+            if (result != 0) {
+                transferred++;
+            }
+        }
+    }
+    printf("Transferred %d AST nodes to file\n", transferred);
+
     // Clean up
     parser_cleanup();
     symtab_close();

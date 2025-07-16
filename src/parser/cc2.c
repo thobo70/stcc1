@@ -87,74 +87,64 @@ static void cc2_cleanup(void) {
     memset(&cc2_state, 0, sizeof(CC2State));
 }
 
-/**
- * @brief Process a function from the AST and generate TAC
- * 
- * @param function_node AST node representing the function
- * @return 0 on success, -1 on error
- */
-static int cc2_process_function(ASTNodeIdx_t function_node) {
-    if (function_node == 0) {
-        return 0; // Empty/invalid function
-    }
-    
-    HBNode* node = HBGet(function_node, HBMODE_AST);
-    if (!node) {
-        fprintf(stderr, "Warning: Cannot access function AST node %u\n", function_node);
-        cc2_state.warnings++;
-        return 0;
-    }
-    
-    // Generate TAC for function
-    if (cc2_state.verbose) {
-        printf("Generating TAC for function at AST node %u\n", function_node);
-    }
-    
-    TACOperand result = tac_build_from_ast(&cc2_state.tac_builder, function_node);
-    if (result.type == TAC_OP_NONE) {
-        fprintf(stderr, "Warning: No TAC generated for function node %u\n", function_node);
-        cc2_state.warnings++;
-    }
-    
-    return 0;
-}
 
 /**
- * @brief Process all functions in the symbol table
+ * @brief Process AST node recursively
  * 
- * @return Number of functions processed
+ * @param node_idx AST node index to process
+ * @return 0 on success, -1 on error
  */
-static int cc2_process_all_functions(void) {
-    int function_count = 0;
+
+
+/**
+ * @brief Traverse all AST nodes systematically
+ * 
+ * @return Number of nodes processed
+ */
+static int cc2_process_all_ast_nodes(void) {
+    int node_count = 0;
     
     if (cc2_state.verbose) {
-        printf("Scanning symbol table for functions...\n");
+        printf("Traversing AST nodes systematically...\n");
     }
     
-    // Iterate through symbol table to find functions
-    // Note: This is a simplified approach - a full implementation would
-    // traverse the AST more systematically
-    for (SymIdx_t sym_idx = 1; sym_idx < 1000; sym_idx++) {
-        SymTabEntry sym = symtab_get(sym_idx);
-        if (sym.type == SYM_FREE) continue;
+    printf("DEBUG: Starting AST traversal...\n");
+    
+    // Find the program root (should be AST_PROGRAM type)
+    ASTNodeIdx_t program_root = 0;
+    for (ASTNodeIdx_t idx = 1; idx <= 100; idx++) {
+        ASTNode node = astore_get(idx);
+        printf("DEBUG: Node %u has type %d\n", idx, node.type);
         
-        // Check if this is a function symbol
-        if (sym.type == SYM_FUNCTION) {
-            if (cc2_state.verbose) {
-                printf("Found function symbol %u\n", sym_idx);
-            }
-            
-            // Generate TAC for this function
-            // In a full implementation, we'd need to find the corresponding AST node
-            // For now, we'll generate a simple function entry
-            TACOperand func_label = tac_new_label(&cc2_state.tac_builder);
-            tac_emit_label(&cc2_state.tac_builder, func_label.data.label.offset);
-            
-            function_count++;
+        if (node.type == AST_PROGRAM) {
+            program_root = idx;
+            printf("DEBUG: Found program root at node %u\n", idx);
+            break;
         }
     }
     
-    return function_count;
+    if (program_root != 0) {
+        printf("DEBUG: Processing from program root\n");
+        TACOperand result = tac_build_from_ast(&cc2_state.tac_builder, program_root);
+        (void)result;
+        node_count = 1;
+    } else {
+        printf("DEBUG: No program root found, processing all valid nodes\n");
+        // Fallback: process all valid nodes
+        for (ASTNodeIdx_t idx = 1; idx <= 100; idx++) {
+            ASTNode node = astore_get(idx);
+            
+            if (node.type != AST_FREE) {
+                printf("DEBUG: Processing valid node %u (type %d)\n", idx, node.type);
+                TACOperand result = tac_build_from_ast(&cc2_state.tac_builder, idx);
+                (void)result;
+                node_count++;
+            }
+        }
+    }
+    
+    printf("DEBUG: Total nodes processed: %d\n", node_count);
+    return node_count;
 }
 
 /**
@@ -167,22 +157,11 @@ static int cc2_process_program(void) {
         printf("=== TAC Generation Pass ===\n");
     }
     
-    // Process global scope and functions
-    int function_count = cc2_process_all_functions();
+    // Process the AST systematically
+    int node_count = cc2_process_all_ast_nodes();
     
     if (cc2_state.verbose) {
-        printf("Processed %d functions\n", function_count);
-    }
-    
-    // For demonstration, let's also process the root AST node
-    // In a real compiler, we'd traverse the AST systematically
-    ASTNodeIdx_t root_node = 1; // Assume root is at index 1
-    HBNode* root = HBGet(root_node, HBMODE_AST);
-    if (root) {
-        if (cc2_state.verbose) {
-            printf("Processing program root AST node\n");
-        }
-        cc2_process_function(root_node);
+        printf("Processed %d AST nodes\n", node_count);
     }
     
     return 0;

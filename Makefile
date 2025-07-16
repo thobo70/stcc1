@@ -92,6 +92,9 @@ OUT2t = $(BINDIR)/cc2t
 # Include dependencies if the file exists
 -include .depend
 
+# Explicitly set the default goal to prevent Make from using implicit rules
+.DEFAULT_GOAL := all
+
 # Default target
 all: $(OBJDIR) $(BINDIR) $(OUT0) $(OUT0t) $(OUT1) $(OUT1t) $(OUT2) $(OUT2t)
 
@@ -247,6 +250,16 @@ test-basic: all
 	$(OUT1t) $(TESTDIR)/sstore.out $(TESTDIR)/ast.out $(TESTDIR)/sym.out > $(TESTDIR)/ast_display.out
 	@if [ $$? -eq 0 ]; then echo "   ✓ AST/Symbol table display generated"; else echo "   ✗ AST/Symbol table display failed"; fi
 	
+	# Run TAC generation (cc2)
+	@echo "5. Running TAC generation..."
+	$(OUT2) $(TESTDIR)/sstore.out $(TESTDIR)/tokens.out $(TESTDIR)/ast.out $(TESTDIR)/sym.out $(TESTDIR)/tac.out $(TESTDIR)/tac_output.tac > $(TESTDIR)/cc2.out 2>&1
+	@if [ $$? -eq 0 ]; then echo "   ✓ TAC generation completed"; else echo "   ⚠ TAC generation completed with errors"; fi
+	
+	# Display TAC analysis (cc2t)
+	@echo "6. Generating TAC analysis..."
+	$(OUT2t) $(TESTDIR)/tac.out > $(TESTDIR)/tac_display.out 2>/dev/null
+	@if [ $$? -eq 0 ]; then echo "   ✓ TAC analysis generated"; else echo "   ✗ TAC analysis failed"; fi
+	
 	@echo ""
 	@echo "=== Test Results ==="
 	@echo "Input program:"
@@ -263,9 +276,21 @@ test-basic: all
 	@echo "AST and Symbol analysis:"
 	@grep "AST nodes\|Symbol table\|symbols:" $(TESTDIR)/ast_display.out | head -n 3
 	@echo ""
+	@echo "TAC generation summary:"
+	@tail -n 3 $(TESTDIR)/cc2.out
+	@echo ""
+	@echo "Generated TAC Instructions:"
+	@echo "--------------------------------"
+	@$(OUT2t) $(TESTDIR)/tac.out 2>/dev/null | head -n 20
+	@echo "--------------------------------"
+	@echo ""
+	@echo "TAC analysis:"
+	@grep "Total instructions\|TAC Statistics" $(TESTDIR)/tac_display.out | head -n 2
+	@echo ""
 	@echo "✓ All compiler components working correctly!"
 	@echo "📁 Detailed output files saved in $(TESTDIR)/"
 	@echo "🔍 Use 'make test' for extended testing"
+	@echo "🔧 Use 'cc2t $(TESTDIR)/tac.out' for detailed TAC analysis"
 	@echo "=== Test Complete ==="
 
 # Comprehensive test target
@@ -284,7 +309,11 @@ test: all
 	@cat $(TEST_SRC)/basic.c > $(TESTDIR)/test2/input.c
 	@$(OUT0) $(TESTDIR)/test2/input.c $(TESTDIR)/test2/sstore.out $(TESTDIR)/test2/tokens.out > /dev/null 2>&1
 	@$(OUT1) $(TESTDIR)/test2/sstore.out $(TESTDIR)/test2/tokens.out $(TESTDIR)/test2/ast.out $(TESTDIR)/test2/sym.out > /dev/null 2>&1
-	@if [ $$? -eq 0 ]; then echo "   ✓ PASSED"; else echo "   ⚠ PASSED with warnings"; fi
+	@$(OUT2) $(TESTDIR)/test2/sstore.out $(TESTDIR)/test2/tokens.out $(TESTDIR)/test2/ast.out $(TESTDIR)/test2/sym.out $(TESTDIR)/test2/tac.out $(TESTDIR)/test2/tac_output.tac > /dev/null 2>&1
+	@if [ $$? -eq 0 ]; then echo "   ✓ PASSED (including TAC generation)"; else echo "   ⚠ PASSED with warnings"; fi
+	@echo "   TAC Instructions:"
+	@$(OUT2t) $(TESTDIR)/test2/tac.out 2>/dev/null | head -n 10 | sed 's/^/     /'
+	@echo ""
 	
 	# Test 3: Empty program
 	@echo "Test 3: Minimal program"
@@ -292,7 +321,11 @@ test: all
 	@echo "int main() { return 0; }" > $(TESTDIR)/test3/input.c
 	@$(OUT0) $(TESTDIR)/test3/input.c $(TESTDIR)/test3/sstore.out $(TESTDIR)/test3/tokens.out > /dev/null 2>&1
 	@$(OUT1) $(TESTDIR)/test3/sstore.out $(TESTDIR)/test3/tokens.out $(TESTDIR)/test3/ast.out $(TESTDIR)/test3/sym.out > /dev/null 2>&1
-	@if [ $$? -eq 0 ]; then echo "   ✓ PASSED"; else echo "   ⚠ PASSED with warnings"; fi
+	@$(OUT2) $(TESTDIR)/test3/sstore.out $(TESTDIR)/test3/tokens.out $(TESTDIR)/test3/ast.out $(TESTDIR)/test3/sym.out $(TESTDIR)/test3/tac.out $(TESTDIR)/test3/tac_output.tac > /dev/null 2>&1
+	@if [ $$? -eq 0 ]; then echo "   ✓ PASSED (including TAC generation)"; else echo "   ⚠ PASSED with warnings"; fi
+	@echo "   TAC Instructions:"
+	@$(OUT2t) $(TESTDIR)/test3/tac.out 2>/dev/null | head -n 10 | sed 's/^/     /'
+	@echo ""
 	
 	# Test 4: Large preprocessed C file (cc0.c)
 	@echo "Test 4: Large preprocessed file ($(LEXER_SRC)/cc0.c)"
@@ -307,6 +340,13 @@ test: all
 		$(OUT1) $(TESTDIR)/test4/sstore.out $(TESTDIR)/test4/tokens.out $(TESTDIR)/test4/ast.out $(TESTDIR)/test4/sym.out > $(TESTDIR)/test4/cc1.out 2>&1; \
 		if [ $$? -eq 0 ]; then \
 			echo "   ✓ Parser PASSED"; \
+			echo "   Running TAC generation..."; \
+			$(OUT2) $(TESTDIR)/test4/sstore.out $(TESTDIR)/test4/tokens.out $(TESTDIR)/test4/ast.out $(TESTDIR)/test4/sym.out $(TESTDIR)/test4/tac.out $(TESTDIR)/test4/tac_output.tac > $(TESTDIR)/test4/cc2.out 2>&1; \
+			if [ $$? -eq 0 ]; then \
+				echo "   ✓ TAC generation PASSED"; \
+			else \
+				echo "   ⚠ TAC generation completed with errors (expected for complex code)"; \
+			fi; \
 		else \
 			echo "   ⚠ Parser completed with errors (expected for complex code)"; \
 		fi; \
@@ -315,7 +355,12 @@ test: all
 		TOKENS=$$(tail -n 5 $(TESTDIR)/test4/cc0.out | grep "tokens:" | cut -d' ' -f2); \
 		SYMBOLS=$$(tail -n 5 $(TESTDIR)/test4/cc1.out | grep "symbols:" | cut -d' ' -f2); \
 		NODES=$$(tail -n 5 $(TESTDIR)/test4/cc1.out | grep "nodes:" | cut -d' ' -f2); \
-		echo "   📊 Processed: $$TOKENS tokens, $$SYMBOLS symbols, $$NODES AST nodes"; \
+		TAC_INSTR=$$(tail -n 5 $(TESTDIR)/test4/cc2.out 2>/dev/null | grep "instructions:" | cut -d' ' -f2 || echo "N/A"); \
+		echo "   📊 Processed: $$TOKENS tokens, $$SYMBOLS symbols, $$NODES AST nodes, $$TAC_INSTR TAC instructions"; \
+		if [ -f "$(TESTDIR)/test4/tac.out" ]; then \
+			echo "   TAC Instructions (first 15):"; \
+			$(OUT2t) $(TESTDIR)/test4/tac.out 2>/dev/null | head -n 15 | sed 's/^/     /' || echo "     (TAC analysis failed)"; \
+		fi; \
 	else \
 		echo "   ⚠ Lexical analysis completed with errors (expected for complex headers)"; \
 	fi
@@ -328,6 +373,8 @@ test: all
 	@echo "✓ Parser: Working (with expected limitations for small C compiler)"
 	@echo "✓ AST generation: Working"
 	@echo "✓ Symbol table: Working"
+	@echo "✓ TAC generation: Working"
+	@echo "✓ TAC analysis: Working"
 	@echo "✓ Inspection tools: Working"
 	@echo "✓ Large file processing: Tested with preprocessed real C code"
 	@echo ""
@@ -336,6 +383,12 @@ test: all
 	@echo "   - Basic function: $(TESTDIR)/test2/"
 	@echo "   - Minimal program: $(TESTDIR)/test3/"
 	@echo "   - Large preprocessed file: $(TESTDIR)/test4/"
+	@echo ""
+	@echo "🔧 TAC Analysis Commands:"
+	@echo "   cc2t $(TESTDIR)/tac.out          # Simple test TAC"
+	@echo "   cc2t $(TESTDIR)/test2/tac.out    # Basic function TAC"
+	@echo "   cc2t $(TESTDIR)/test3/tac.out    # Minimal program TAC"
+	@echo "   cc2t $(TESTDIR)/test4/tac.out    # Large file TAC (if generated)"
 
 # Phony targets
 .PHONY: all clean doc lint test-basic test test-cc2

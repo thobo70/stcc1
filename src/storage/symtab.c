@@ -96,5 +96,16 @@ SymTabEntry symtab_get(SymIdx_t idx) {
   return entry;
 }
 
+SymIdx_t symtab_get_count(void) {
+  if (fpsym == NULL) {
+    return 0;
+  }
+  long current_pos = ftell(fpsym);
+  fseek(fpsym, 0, SEEK_END);
+  long end_pos = ftell(fpsym);
+  fseek(fpsym, current_pos, SEEK_SET);  // Restore position
+  return (SymIdx_t)(end_pos / sizeof(SymTabEntry));
+}
+
 
 
