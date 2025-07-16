@@ -1,0 +1,22 @@
+error_core.o: src/error/error_core.c src/error/error_core.h \
+ src/error/../lexer/ctoken.h src/error/../lexer/../storage/sstore.h \
+ src/error/../lexer/../storage/../utils/hash.h \
+ src/error/../storage/sstore.h src/error/../storage/tstore.h \
+ src/error/../storage/../lexer/ctoken.h
+error_stages.o: src/error/error_stages.c src/error/error_stages.h \
+ src/error/error_core.h src/error/../lexer/ctoken.h \
+ src/error/../lexer/../storage/sstore.h \
+ src/error/../lexer/../storage/../utils/hash.h \
+ src/error/../storage/sstore.h src/error/../ast/ast_types.h \
+ src/error/../ast/../storage/sstore.h src/error/../ast/../lexer/ctoken.h \
+ src/error/../storage/tstore.h src/error/../storage/../lexer/ctoken.h
+ast_builder.o: src/ast/ast_builder.c src/ast/ast_builder.h \
+ src/ast/ast_types.h src/ast/../storage/sstore.h \
+ src/ast/../storage/../utils/hash.h src/ast/../lexer/ctoken.h \
+ src/ast/../lexer/../storage/sstore.h src/ast/../utils/hmapbuf.h \
+ src/ast/../utils/../storage/symtab.h \
+ src/ast/../utils/../storage/sstore.h \
+ src/ast/../utils/../storage/astore.h \
+ src/ast/../utils/../storage/../ast/astnode.h \
+ src/ast/../utils/../storage/../ast/../storage/sstore.h \
+ src/ast/../utils/../storage/../ast/../lexer/ctoken.h

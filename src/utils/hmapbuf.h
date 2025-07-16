@@ -11,8 +11,8 @@
 #ifndef HMAPBUF_H  // NOLINT
 #define HMAPBUF_H
 
-#include "symtab.h"
-#include "astore.h"
+#include "../storage/symtab.h"
+#include "../storage/astore.h"
 
 enum {
     HBMODE_UNUSED,

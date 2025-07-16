@@ -10,8 +10,8 @@
  */
 #include <stdio.h>
 
-#include "sstore.h"
-#include "tstore.h"
+#include "../storage/sstore.h"
+#include "../storage/tstore.h"
 
 int main(int argc, char *argv[]) {
   if (argc != 3) {

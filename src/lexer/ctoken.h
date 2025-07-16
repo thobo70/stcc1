@@ -11,7 +11,7 @@
 #ifndef CTOKEN_H  // NOLINT
 #define CTOKEN_H
 
-#include "sstore.h"
+#include "../storage/sstore.h"
 
 // Token IDs
 typedef enum TokenID_t {

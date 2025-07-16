@@ -11,8 +11,8 @@
 #ifndef _ASTNODE_H  // NOLINT
 #define _ASTNODE_H
 
-#include "sstore.h"
-#include "ctoken.h"
+#include "../storage/sstore.h"
+#include "../lexer/ctoken.h"
 
 typedef enum {
     AST_FREE,

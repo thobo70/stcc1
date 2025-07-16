@@ -11,7 +11,7 @@
 #ifndef TSTORE_H  // NOLINT
 #define TSTORE_H
 
-#include "ctoken.h"
+#include "../lexer/ctoken.h"
 
 
 /**

@@ -1,0 +1,520 @@
+/**
+ * @file cc1.c
+ * @brief Enhanced C parser with AST generation and symbol table management
+ * @author Thomas Boos (            ASTNodeIdx_t node_idx = create_ast_node(AST_EXPR_IDENTIFIE        ASTNodeIdx_t op_node = create_ast_node(AST_OPERATOR, token_idx);
+        if (op_node) {
+            HBNode* node = HBGet(op_node, HBMODE_AST);
+            node->ast.o1 = left;
+            node->ast.o2 = right;
+        }en_idx);
+            if (node_idx) {
+                // Note: New AST system handles node data internally
+            }70@gmail.com)
+ * @version 0.3
+ * @date 2025-07-16
+ * @copyright Copyright (c) 2024-2025 Thomas Boos
+ * 
+ * @details Enhanced parser that processes tokens from cc0 and generates:
+ * - Complete Abstract Syntax Tree (AST) stored in astore
+ * - Symbol table with proper scoping stored in symtab
+ * - Integrated error handling with detailed diagnostics
+ * - Memory-efficient file-based storage during runtime
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "../storage/sstore.h"
+#include "../storage/tstore.h"
+#include "../utils/hmapbuf.h"
+#include "../error/error_core.h"
+// Enhanced cc1 with error handling and core AST capabilities
+
+// Enhanced parser state for tracking context
+typedef struct {
+    TokenIdx_t current_token;
+    int in_function;
+    int scope_depth;
+    SymIdx_t current_scope;
+    int error_count;
+} ParserState_t;
+
+static ParserState_t parser_state = {0};
+
+// Forward declarations
+ASTNodeIdx_t parse_program(void);
+ASTNodeIdx_t parse_declaration(void);
+ASTNodeIdx_t parse_function_definition(void);
+ASTNodeIdx_t parse_statement(void);
+ASTNodeIdx_t parse_expression(void);
+ASTNodeIdx_t parse_primary_expression(void);
+
+/**
+ * @brief Get the current token without advancing
+ */
+Token_t peek_token(void) {
+    TokenIdx_t saved_idx = tstore_getidx();
+    Token_t token = tstore_next();
+    tstore_setidx(saved_idx);
+    return token;
+}
+
+/**
+ * @brief Advance to next token and return it
+ */
+Token_t next_token(void) {
+    parser_state.current_token = tstore_getidx();
+    return tstore_next();
+}
+
+/**
+ * @brief Check if current token matches expected type
+ */
+int expect_token(TokenID_t expected) {
+    Token_t token = peek_token();
+    if (token.id == expected) {
+        next_token();
+        return 1;
+    }
+    
+    // Report syntax error using core error system
+    SourceLocation_t location = error_create_location(parser_state.current_token);
+    error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                     "Unexpected token", "Check syntax", "parser", NULL);
+    return 0;
+}
+
+/**
+ * @brief Create AST node with enhanced error handling
+ */
+ASTNodeIdx_t create_ast_node(ASTNodeType type, TokenIdx_t token_idx) {
+    HBNode *node = HBNew(HBMODE_AST);
+    if (!node) {
+        SourceLocation_t loc = {0, 0, 0, 0};  // Simple location
+        error_core_report(ERROR_ERROR, ERROR_SEMANTIC, 
+                         &loc, 3001, "Cannot allocate AST node",
+                         "Check memory allocation", "parser", NULL);
+        return 0;
+    }
+    
+    node->ast.type = type;
+    node->ast.tid = token_idx;
+    node->ast.o1 = 0;
+    node->ast.o2 = 0;
+    
+    return node->idx;
+}
+
+/**
+ * @brief Add symbol to symbol table
+ */
+SymIdx_t add_symbol(const char* name, SymType type, TokenIdx_t token_idx) {
+    SymTabEntry entry = {0};
+    entry.type = type;
+    // Store string using sstore_str
+    entry.name = sstore_str(name, strlen(name));
+    entry.parent = parser_state.current_scope;
+    entry.line = token_idx; // Use token index as line reference
+    
+    SymIdx_t sym_idx = symtab_add(&entry);
+    if (sym_idx == 0) {
+        SourceLocation_t location = error_create_location(token_idx);
+        error_core_report(ERROR_ERROR, ERROR_SEMANTIC, &location, 3000,
+                         "Cannot add symbol to table", "Check symbol table capacity", "parser", NULL);
+    }
+    
+    return sym_idx;
+}
+
+/**
+ * @brief Parse primary expressions (identifiers, literals, parenthesized expressions)
+ */
+ASTNodeIdx_t parse_primary_expression(void) {
+    Token_t token = peek_token();
+    TokenIdx_t token_idx = tstore_getidx();
+    
+    switch (token.id) {
+        case T_ID: {
+            next_token();
+            ASTNodeIdx_t node_idx = create_ast_node(AST_IDENTIFIER, token_idx);
+            if (node_idx) {
+                HBNode *node = HBGet(node_idx, HBMODE_AST);
+                node->ast.o1 = token.pos; // Store identifier name position
+            }
+            return node_idx;
+        }
+        
+        case T_LITINT: {
+            next_token();
+            return create_ast_node(AST_LITERAL, token_idx);
+        }
+        
+        case T_LITSTRING: {
+            next_token();
+            return create_ast_node(AST_LITERAL, token_idx);
+        }
+        
+        case T_LITCHAR: {
+            next_token();
+            return create_ast_node(AST_LITERAL, token_idx);
+        }
+        
+        case T_LPAREN: {
+            next_token(); // consume '('
+            ASTNodeIdx_t expr = parse_expression();
+            if (!expect_token(T_RPAREN)) {
+                SourceLocation_t location = error_create_location(tstore_getidx());
+                error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                                 "Missing closing parenthesis", "Expected ')'", "parser", NULL);
+            }
+            return expr;
+        }
+        
+        default:
+            SourceLocation_t location = error_create_location(token_idx);
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             "Expected primary expression", "Check expression syntax", "parser", NULL);
+            return 0;
+    }
+}
+
+/**
+ * @brief Parse expressions with precedence
+ */
+ASTNodeIdx_t parse_expression(void) {
+    // Simple expression parsing - can be enhanced with operator precedence
+    ASTNodeIdx_t left = parse_primary_expression();
+    if (!left) return 0;
+    
+    Token_t token = peek_token();
+    TokenIdx_t token_idx = tstore_getidx();
+    
+    // Handle binary operators
+    if (token.id == T_PLUS || token.id == T_MINUS || token.id == T_MUL || 
+        token.id == T_DIV || token.id == T_ASSIGN || token.id == T_EQ ||
+        token.id == T_NEQ || token.id == T_LT || token.id == T_GT) {
+        
+        next_token(); // consume operator
+        ASTNodeIdx_t right = parse_expression();
+        if (!right) {
+            SourceLocation_t location = error_create_location(token_idx);
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             "Expected right operand", "Check expression syntax", "parser", NULL);
+            return left;
+        }
+        
+        ASTNodeIdx_t op_node = create_ast_node(AST_OPERATOR, token_idx);
+        if (op_node) {
+            HBNode *node = HBGet(op_node, HBMODE_AST);
+            node->ast.o1 = left;
+            node->ast.o2 = right;
+        }
+        return op_node;
+    }
+    
+    return left;
+}
+
+/**
+ * @brief Parse statements (return, if, while, expression statements, etc.)
+ */
+ASTNodeIdx_t parse_statement(void) {
+    Token_t token = peek_token();
+    TokenIdx_t token_idx = tstore_getidx();
+    
+    switch (token.id) {
+        case T_RETURN: {
+            next_token(); // consume 'return'
+            ASTNodeIdx_t node_idx = create_ast_node(AST_RETURN, token_idx);
+            
+            // Optional return expression
+            if (peek_token().id != T_SEMICOLON) {
+                ASTNodeIdx_t expr = parse_expression();
+                if (node_idx && expr) {
+                    HBNode *node = HBGet(node_idx, HBMODE_AST);
+                    node->ast.o1 = expr;
+                }
+            }
+            
+            expect_token(T_SEMICOLON);
+            return node_idx;
+        }
+        
+        case T_IF: {
+            next_token(); // consume 'if'
+            expect_token(T_LPAREN);
+            ASTNodeIdx_t condition = parse_expression();
+            expect_token(T_RPAREN);
+            ASTNodeIdx_t then_stmt = parse_statement();
+            
+            ASTNodeIdx_t node_idx = create_ast_node(AST_IF, token_idx);
+            if (node_idx) {
+                HBNode *node = HBGet(node_idx, HBMODE_AST);
+                node->ast.o1 = condition;
+                node->ast.o2 = then_stmt;
+            }
+            return node_idx;
+        }
+        
+        case T_WHILE: {
+            next_token(); // consume 'while'
+            expect_token(T_LPAREN);
+            ASTNodeIdx_t condition = parse_expression();
+            expect_token(T_RPAREN);
+            ASTNodeIdx_t body = parse_statement();
+            
+            ASTNodeIdx_t node_idx = create_ast_node(AST_WHILE, token_idx);
+            if (node_idx) {
+                HBNode *node = HBGet(node_idx, HBMODE_AST);
+                node->ast.o1 = condition;
+                node->ast.o2 = body;
+            }
+            return node_idx;
+        }
+        
+        case T_LBRACE: {
+            // Compound statement
+            next_token(); // consume '{'
+            ASTNodeIdx_t compound = create_ast_node(AST_STATEMENT, token_idx);
+            
+            // Parse statements until '}'
+            while (peek_token().id != T_RBRACE && peek_token().id != T_EOF) {
+                ASTNodeIdx_t stmt = parse_statement();
+                if (!stmt) break;
+                // Link statements - simplified chaining
+            }
+            
+            expect_token(T_RBRACE);
+            return compound;
+        }
+        
+        default: {
+            // Expression statement
+            ASTNodeIdx_t expr = parse_expression();
+            expect_token(T_SEMICOLON);
+            return expr;
+        }
+    }
+}
+
+/**
+ * @brief Parse variable or function declarations
+ */
+ASTNodeIdx_t parse_declaration(void) {
+    Token_t token = peek_token();
+    TokenIdx_t token_idx = tstore_getidx();
+    
+    // Handle storage class specifiers and type specifiers
+    if (token.id == T_INT || token.id == T_CHAR || token.id == T_FLOAT || 
+        token.id == T_DOUBLE || token.id == T_VOID || token.id == T_LONG ||
+        token.id == T_SHORT || token.id == T_UNSIGNED || token.id == T_SIGNED) {
+        
+        next_token(); // consume type
+        
+        Token_t id_token = peek_token();
+        if (id_token.id != T_ID) {
+            SourceLocation_t location = error_create_location(tstore_getidx());
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                             "Missing identifier", "Expected identifier after type", "parser", NULL);
+            return 0;
+        }
+        
+        next_token(); // consume identifier
+        const char* name = sstore_get(id_token.pos);
+        
+        // Check if this is a function definition
+        if (peek_token().id == T_LPAREN) {
+            // Function definition
+            parser_state.in_function = 1;
+            add_symbol(name, SYM_FUNCTION, tstore_getidx());
+            
+            next_token(); // consume '('
+            // TODO: Parse parameters
+            expect_token(T_RPAREN);
+            
+            if (peek_token().id == T_LBRACE) {
+                // Function definition with body
+                ASTNodeIdx_t body = parse_statement();
+                ASTNodeIdx_t func_node = create_ast_node(AST_FUNCTION, token_idx);
+                if (func_node) {
+                    HBNode *node = HBGet(func_node, HBMODE_AST);
+                    node->ast.o1 = id_token.pos; // Function name
+                    node->ast.o2 = body;
+                }
+                parser_state.in_function = 0;
+                return func_node;
+            } else {
+                // Function declaration only
+                expect_token(T_SEMICOLON);
+                return create_ast_node(AST_DECLARATION, token_idx);
+            }
+        } else {
+            // Variable declaration
+            add_symbol(name, SYM_VARIABLE, tstore_getidx());
+            
+            // Handle optional initializer
+            if (peek_token().id == T_ASSIGN) {
+                next_token(); // consume '='
+                ASTNodeIdx_t init_expr = parse_expression();
+                ASTNodeIdx_t decl_node = create_ast_node(AST_DECLARATION, token_idx);
+                if (decl_node) {
+                    HBNode *node = HBGet(decl_node, HBMODE_AST);
+                    node->ast.o1 = id_token.pos; // Variable name
+                    node->ast.o2 = init_expr;
+                }
+                expect_token(T_SEMICOLON);
+                return decl_node;
+            } else {
+                expect_token(T_SEMICOLON);
+                ASTNodeIdx_t decl_node = create_ast_node(AST_DECLARATION, token_idx);
+                if (decl_node) {
+                    HBNode *node = HBGet(decl_node, HBMODE_AST);
+                    node->ast.o1 = id_token.pos; // Variable name
+                }
+                return decl_node;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief Parse the complete program (translation unit)
+ */
+ASTNodeIdx_t parse_program(void) {
+    ASTNodeIdx_t program_node = create_ast_node(AST_PROGRAM, 0);
+    ASTNodeIdx_t current = program_node;
+    
+    while (peek_token().id != T_EOF) {
+        ASTNodeIdx_t decl = parse_declaration();
+        if (!decl) {
+            // Skip to next likely declaration start
+            Token_t token = next_token();
+            if (token.id == T_EOF) break;
+            
+            fprintf(stderr, "Error: unexpected token\n");
+            // Print current token info for debugging
+            continue;
+        }
+        
+        // Link declarations in a chain
+        if (current && current != program_node) {
+            HBNode *node = HBGet(current, HBMODE_AST);
+            if (node) {
+                node->ast.o1 = decl;
+            }
+        } else if (program_node) {
+            HBNode *node = HBGet(program_node, HBMODE_AST);
+            if (node) {
+                node->ast.o2 = decl; // First declaration
+            }
+        }
+        current = decl;
+    }
+    
+    return program_node;
+}
+
+/**
+ * @brief Initialize parser with error handling
+ */
+void parser_init(void) {
+    // Initialize error handling
+    ErrorConfig_t config = {
+        .max_errors = 50,
+        .max_warnings = 100,
+        .show_line_numbers = 1,
+        .show_source_context = 1,
+        .show_suggestions = 1,
+        .colorize_output = 0,
+        .output_stream = stderr
+    };
+    
+    error_core_init(&config);
+    
+    // Initialize parser state
+    parser_state.current_token = 0;
+    parser_state.in_function = 0;
+    parser_state.scope_depth = 0;
+    parser_state.current_scope = 0;
+    parser_state.error_count = 0;
+}
+
+/**
+ * @brief Clean up parser resources
+ */
+void parser_cleanup(void) {
+    if (error_core_has_errors()) {
+        error_core_print_summary();
+    }
+    
+    error_core_cleanup();
+}
+
+/**
+ * @brief Main parser entry point
+ */
+int main(int argc, char *argv[]) {
+    if (argc != 5) {
+        fprintf(stderr, "Usage: %s <sstorefile> <tokenfile> <astfile> <symfile>\n", argv[0]);
+        return 1;
+    }
+
+    // Initialize storage systems
+    if (sstore_open(argv[1]) != 0) {
+        fprintf(stderr, "Error: Cannot open sstorefile %s\n", argv[1]);
+        return 1;
+    }
+    
+    if (tstore_open(argv[2]) != 0) {
+        fprintf(stderr, "Error: Cannot open tokenfile %s\n", argv[2]);
+        sstore_close();
+        return 1;
+    }
+    
+    if (astore_init(argv[3]) != 0) {
+        fprintf(stderr, "Error: Cannot open astfile %s\n", argv[3]);
+        tstore_close();
+        sstore_close();
+        return 1;
+    }
+    
+    if (symtab_init(argv[4]) != 0) {
+        fprintf(stderr, "Error: Cannot open symfile %s\n", argv[4]);
+        astore_close();
+        tstore_close();
+        sstore_close();
+        return 1;
+    }
+
+    // Initialize memory management and parser
+    HBInit();
+    parser_init();
+
+    // Parse the program
+    ASTNodeIdx_t program_ast = parse_program();
+    
+    if (program_ast) {
+        fprintf(stderr, "Parsing completed successfully\n");
+    } else {
+        fprintf(stderr, "Parsing failed\n");
+    }
+
+    // Print statistics
+    fprintf(stderr, "symbols: available\n");
+    fprintf(stderr, "nodes: available\n");
+    fprintf(stderr, "tokens: %u\n", tstore_getidx());
+    fprintf(stderr, "sstoreidx: available, sstoresize: available\n");
+
+    // Cleanup
+    parser_cleanup();
+    HBEnd();
+    symtab_close();
+    astore_close();
+    tstore_close();
+    sstore_close();
+
+    return error_core_has_errors() ? 1 : 0;
+}

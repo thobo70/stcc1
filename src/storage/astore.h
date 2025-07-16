@@ -11,7 +11,7 @@
 #ifndef ASTORE_H  // NOLINT
 #define ASTORE_H
 
-#include "astnode.h"
+#include "../ast/astnode.h"
 
 typedef unsigned short ASTNodeIdx_t;  // NOLINT
 

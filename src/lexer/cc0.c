@@ -70,8 +70,8 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "sstore.h"
-#include "tstore.h"
+#include "../storage/sstore.h"
+#include "../storage/tstore.h"
 
 #define TOKEN_TYPE_NAME(t)  t, #t
 #define SET_LEXEME_LEN(l)  l, (sizeof(l) - 1)

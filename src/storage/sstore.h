@@ -1,7 +1,7 @@
 #ifndef SSTORE_H
 #define SSTORE_H
 
-#include "hash.h"
+#include "../utils/hash.h"
 
 // Error code for sstore instead of pos
 #define SSTORE_ERR 0xFFFF
