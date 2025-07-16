@@ -1,0 +1,661 @@
+/**
+ * @file tac_builder.c
+ * @brief TAC generation from AST nodes implementation
+ * @author Thomas Boos (tboos70@gmail.com)
+ * @version 0.1
+ * @date 2025-07-16
+ * @copyright Copyright (c) 2024-2025 Thomas Boos
+ */
+
+#include "tac_builder.h"
+#include "../utils/hmapbuf.h"
+#include "../storage/tstore.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+
+// Forward declarations for static functions
+static TACOperand translate_integer_literal(TACBuilder* builder, HBNode* hb_node);
+static TACOperand translate_identifier(TACBuilder* builder, HBNode* hb_node);
+static TACOperand translate_binary_expr(TACBuilder* builder, HBNode* hb_node);
+static TACOperand translate_unary_expr(TACBuilder* builder, HBNode* hb_node);
+static TACOperand translate_assignment(TACBuilder* builder, HBNode* hb_node);
+static void translate_if_stmt(TACBuilder* builder, HBNode* hb_node);
+static void translate_while_stmt(TACBuilder* builder, HBNode* hb_node);
+static void translate_return_stmt(TACBuilder* builder, HBNode* hb_node);
+static void translate_compound_stmt(TACBuilder* builder, HBNode* hb_node);
+static TACOperand translate_function_call(TACBuilder* builder, HBNode* hb_node);
+
+/**
+ * @brief Initialize TAC builder
+ */
+int tac_builder_init(TACBuilder* builder, const char* tac_filename) {
+    if (builder == NULL || tac_filename == NULL) {
+        return 0;
+    }
+    
+    memset(builder, 0, sizeof(TACBuilder));
+    
+    // Initialize TAC store
+    if (!tacstore_init(tac_filename)) {
+        return 0;
+    }
+    
+    // Initialize temporary manager
+    builder->temp_mgr = malloc(sizeof(TACTempManager));
+    if (builder->temp_mgr == NULL) {
+        tacstore_close();
+        return 0;
+    }
+    
+    builder->temp_mgr->next_temp = 1;  // Start from t1
+    builder->temp_mgr->max_temp = 1000; // Reasonable limit
+    builder->temp_mgr->temp_types = calloc(builder->temp_mgr->max_temp, sizeof(uint8_t));
+    builder->temp_mgr->temp_flags = calloc(builder->temp_mgr->max_temp, sizeof(TACFlags));
+    
+    if (builder->temp_mgr->temp_types == NULL || builder->temp_mgr->temp_flags == NULL) {
+        tac_builder_cleanup(builder);
+        return 0;
+    }
+    
+    builder->label_counter = 1;  // Start from L1
+    builder->error_count = 0;
+    builder->warning_count = 0;
+    
+    return 1;
+}
+
+/**
+ * @brief Cleanup TAC builder
+ */
+void tac_builder_cleanup(TACBuilder* builder) {
+    if (builder == NULL) {
+        return;
+    }
+    
+    tacstore_close();
+    
+    if (builder->temp_mgr != NULL) {
+        free(builder->temp_mgr->temp_types);
+        free(builder->temp_mgr->temp_flags);
+        free(builder->temp_mgr);
+        builder->temp_mgr = NULL;
+    }
+    
+    memset(builder, 0, sizeof(TACBuilder));
+}
+
+/**
+ * @brief Create a new temporary variable
+ */
+TACOperand tac_new_temp(TACBuilder* builder, TypeIdx_t type) {
+    if (builder == NULL || builder->temp_mgr == NULL) {
+        return TAC_OPERAND_NONE;
+    }
+    
+    if (builder->temp_mgr->next_temp >= builder->temp_mgr->max_temp) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    uint16_t temp_id = builder->temp_mgr->next_temp++;
+    builder->temp_mgr->temp_types[temp_id] = (uint8_t)type;
+    builder->temp_mgr->temp_flags[temp_id] = TAC_FLAG_NONE;
+    
+    return TAC_MAKE_TEMP(temp_id);
+}
+
+/**
+ * @brief Create a new label
+ */
+TACOperand tac_new_label(TACBuilder* builder) {
+    if (builder == NULL) {
+        return TAC_OPERAND_NONE;
+    }
+    
+    uint16_t label_id = builder->label_counter++;
+    return TAC_MAKE_LABEL(label_id);
+}
+
+/**
+ * @brief Create variable operand
+ */
+TACOperand tac_make_variable(uint16_t var_id, uint8_t scope) {
+    TACOperand op;
+    op.type = TAC_OP_VAR;
+    op.data.variable.id = var_id;
+    op.data.variable.scope = scope;
+    return op;
+}
+
+/**
+ * @brief Create immediate integer operand
+ */
+TACOperand tac_make_immediate_int(int32_t value) {
+    return TAC_MAKE_IMMEDIATE(value);
+}
+
+/**
+ * @brief Create label reference operand
+ */
+TACOperand tac_make_label_ref(uint16_t label_id) {
+    return TAC_MAKE_LABEL(label_id);
+}
+
+/**
+ * @brief Emit a TAC instruction
+ */
+TACIdx_t tac_emit_instruction(TACBuilder* builder, TACOpcode op, 
+                             TACOperand result, TACOperand op1, TACOperand op2) {
+    if (builder == NULL) {
+        return 0;
+    }
+    
+    TACInstruction instr;
+    instr.opcode = op;
+    instr.flags = TAC_FLAG_NONE;
+    instr.result = result;
+    instr.operand1 = op1;
+    instr.operand2 = op2;
+    
+    TACIdx_t idx = tacstore_add(&instr);
+    if (idx == 0) {
+        builder->error_count++;
+    }
+    
+    return idx;
+}
+
+/**
+ * @brief Emit a label instruction
+ */
+TACIdx_t tac_emit_label(TACBuilder* builder, uint16_t label_id) {
+    TACOperand label_op = TAC_MAKE_LABEL(label_id);
+    return tac_emit_instruction(builder, TAC_LABEL, label_op, 
+                               TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+}
+
+/**
+ * @brief Emit assignment instruction
+ */
+TACIdx_t tac_emit_assign(TACBuilder* builder, TACOperand dest, TACOperand src) {
+    return tac_emit_instruction(builder, TAC_ASSIGN, dest, src, TAC_OPERAND_NONE);
+}
+
+/**
+ * @brief Emit binary operation
+ */
+TACIdx_t tac_emit_binary_op(TACBuilder* builder, TACOpcode op, 
+                           TACOperand result, TACOperand left, TACOperand right) {
+    return tac_emit_instruction(builder, op, result, left, right);
+}
+
+/**
+ * @brief Emit unary operation
+ */
+TACIdx_t tac_emit_unary_op(TACBuilder* builder, TACOpcode op,
+                          TACOperand result, TACOperand operand) {
+    return tac_emit_instruction(builder, op, result, operand, TAC_OPERAND_NONE);
+}
+
+/**
+ * @brief Emit conditional jump
+ */
+TACIdx_t tac_emit_conditional_jump(TACBuilder* builder, TACOperand condition,
+                                  uint16_t label_id, int jump_if_false) {
+    TACOperand label_op = TAC_MAKE_LABEL(label_id);
+    TACOpcode opcode = jump_if_false ? TAC_IF_FALSE : TAC_IF_TRUE;
+    return tac_emit_instruction(builder, opcode, TAC_OPERAND_NONE, condition, label_op);
+}
+
+/**
+ * @brief Emit unconditional jump
+ */
+TACIdx_t tac_emit_unconditional_jump(TACBuilder* builder, uint16_t label_id) {
+    TACOperand label_op = TAC_MAKE_LABEL(label_id);
+    return tac_emit_instruction(builder, TAC_GOTO, TAC_OPERAND_NONE, label_op, TAC_OPERAND_NONE);
+}
+
+/**
+ * @brief Convert token ID to TAC opcode
+ */
+TACOpcode token_to_tac_opcode(TokenID_t token_id) {
+    switch (token_id) {
+        case T_PLUS:    return TAC_ADD;
+        case T_MINUS:   return TAC_SUB;
+        case T_MUL:     return TAC_MUL;
+        case T_DIV:     return TAC_DIV;
+        case T_MOD:     return TAC_MOD;
+        case T_EQ:      return TAC_EQ;
+        case T_NEQ:     return TAC_NE;
+        case T_LT:      return TAC_LT;
+        case T_LTE:     return TAC_LE;  // Use T_LTE instead of T_LE
+        case T_GT:      return TAC_GT;
+        case T_GTE:     return TAC_GE;  // Use T_GTE instead of T_GE
+        case T_ASSIGN:  return TAC_ASSIGN;
+        case T_NOT:     return TAC_NOT;
+        // Note: Bitwise operations may not be defined in token set
+        default:        return TAC_NOP;
+    }
+}
+
+/**
+ * @brief Convert TAC opcode to string
+ */
+const char* tac_opcode_to_string(TACOpcode opcode) {
+    switch (opcode) {
+        case TAC_NOP:           return "nop";
+        case TAC_ADD:           return "add";
+        case TAC_SUB:           return "sub";
+        case TAC_MUL:           return "mul";
+        case TAC_DIV:           return "div";
+        case TAC_MOD:           return "mod";
+        case TAC_NEG:           return "neg";
+        case TAC_NOT:           return "not";
+        case TAC_BITWISE_NOT:   return "bnot";
+        case TAC_AND:           return "and";
+        case TAC_OR:            return "or";
+        case TAC_XOR:           return "xor";
+        case TAC_SHL:           return "shl";
+        case TAC_SHR:           return "shr";
+        case TAC_EQ:            return "eq";
+        case TAC_NE:            return "ne";
+        case TAC_LT:            return "lt";
+        case TAC_LE:            return "le";
+        case TAC_GT:            return "gt";
+        case TAC_GE:            return "ge";
+        case TAC_LOGICAL_AND:   return "land";
+        case TAC_LOGICAL_OR:    return "lor";
+        case TAC_ASSIGN:        return "assign";
+        case TAC_LOAD:          return "load";
+        case TAC_STORE:         return "store";
+        case TAC_ADDR:          return "addr";
+        case TAC_INDEX:         return "index";
+        case TAC_MEMBER:        return "member";
+        case TAC_MEMBER_PTR:    return "member_ptr";
+        case TAC_LABEL:         return "label";
+        case TAC_GOTO:          return "goto";
+        case TAC_IF_FALSE:      return "if_false";
+        case TAC_IF_TRUE:       return "if_true";
+        case TAC_CALL:          return "call";
+        case TAC_PARAM:         return "param";
+        case TAC_RETURN:        return "return";
+        case TAC_RETURN_VOID:   return "return_void";
+        case TAC_CAST:          return "cast";
+        case TAC_SIZEOF:        return "sizeof";
+        case TAC_PHI:           return "phi";
+        default:                return "unknown";
+    }
+}
+
+/**
+ * @brief Convert TAC operand type to string
+ */
+const char* tac_operand_type_to_string(TACOperandType type) {
+    switch (type) {
+        case TAC_OP_NONE:       return "none";
+        case TAC_OP_TEMP:       return "temp";
+        case TAC_OP_VAR:        return "var";
+        case TAC_OP_IMMEDIATE:  return "imm";
+        case TAC_OP_LABEL:      return "label";
+        case TAC_OP_FUNCTION:   return "func";
+        case TAC_OP_GLOBAL:     return "global";
+        case TAC_OP_PARAM:      return "param";
+        case TAC_OP_RETURN_VAL: return "retval";
+        default:                return "unknown";
+    }
+}
+
+/**
+ * @brief Main AST to TAC translation function
+ */
+TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
+    if (builder == NULL || node == 0) {
+        return TAC_OPERAND_NONE;
+    }
+    
+    HBNode* hb_node = HBGet(node, HBMODE_AST);
+    if (hb_node == NULL) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    switch (hb_node->ast.type) {
+        case AST_LIT_INTEGER:
+            return translate_integer_literal(builder, hb_node);
+            
+        case AST_EXPR_IDENTIFIER:
+            return translate_identifier(builder, hb_node);
+            
+        case AST_EXPR_BINARY_OP:
+            return translate_binary_expr(builder, hb_node);
+            
+        case AST_EXPR_UNARY_OP:
+            return translate_unary_expr(builder, hb_node);
+            
+        case AST_EXPR_ASSIGN:
+            return translate_assignment(builder, hb_node);
+            
+        case AST_STMT_IF:
+            translate_if_stmt(builder, hb_node);
+            return TAC_OPERAND_NONE;
+            
+        case AST_STMT_WHILE:
+            translate_while_stmt(builder, hb_node);
+            return TAC_OPERAND_NONE;
+            
+        case AST_STMT_RETURN:
+            translate_return_stmt(builder, hb_node);
+            return TAC_OPERAND_NONE;
+            
+        case AST_STMT_COMPOUND:
+            translate_compound_stmt(builder, hb_node);
+            return TAC_OPERAND_NONE;
+            
+        case AST_EXPR_CALL:
+            return translate_function_call(builder, hb_node);
+            
+        default:
+            builder->warning_count++;
+            return TAC_OPERAND_NONE;
+    }
+}
+
+/**
+ * @brief Translate integer literal
+ */
+static TACOperand translate_integer_literal(TACBuilder* builder, HBNode* hb_node) {
+    int64_t value = hb_node->ast.binary.value.long_value;
+    
+    // Check if value fits in 32-bit immediate
+    if (value >= INT32_MIN && value <= INT32_MAX) {
+        return tac_make_immediate_int((int32_t)value);
+    } else {
+        // For large values, create a temporary and load the value
+        TACOperand temp = tac_new_temp(builder, hb_node->ast.type_idx);
+        TACOperand imm = tac_make_immediate_int((int32_t)value);
+        tac_emit_assign(builder, temp, imm);
+        return temp;
+    }
+}
+
+/**
+ * @brief Translate identifier
+ */
+static TACOperand translate_identifier(TACBuilder* builder, HBNode* hb_node) {
+    // Suppress unused parameter warning for now
+    (void)builder;
+    
+    // Extract variable ID from symbol table position
+    uint16_t var_id = (uint16_t)hb_node->ast.binary.value.symbol_idx;
+    return tac_make_variable(var_id, 0);  // Scope 0 for now
+}
+
+/**
+ * @brief Translate binary expression
+ */
+static TACOperand translate_binary_expr(TACBuilder* builder, HBNode* hb_node) {
+    // Translate operands
+    TACOperand left = tac_build_from_ast(builder, hb_node->ast.binary.left);
+    TACOperand right = tac_build_from_ast(builder, hb_node->ast.binary.right);
+    
+    if (left.type == TAC_OP_NONE || right.type == TAC_OP_NONE) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    // Get operator from token
+    Token_t token = tstore_get(hb_node->ast.token_idx);
+    TACOpcode opcode = token_to_tac_opcode(token.id);
+    
+    if (opcode == TAC_NOP) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    // Generate result temporary
+    TACOperand result = tac_new_temp(builder, hb_node->ast.type_idx);
+    
+    // Emit instruction
+    tac_emit_binary_op(builder, opcode, result, left, right);
+    
+    return result;
+}
+
+/**
+ * @brief Translate unary expression
+ */
+static TACOperand translate_unary_expr(TACBuilder* builder, HBNode* hb_node) {
+    // Translate operand
+    TACOperand operand = tac_build_from_ast(builder, hb_node->ast.unary.operand);
+    
+    if (operand.type == TAC_OP_NONE) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    // Get operator
+    TACOpcode opcode = token_to_tac_opcode(hb_node->ast.unary.operator);
+    
+    if (opcode == TAC_NOP) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    // Generate result temporary
+    TACOperand result = tac_new_temp(builder, hb_node->ast.type_idx);
+    
+    // Emit instruction
+    tac_emit_unary_op(builder, opcode, result, operand);
+    
+    return result;
+}
+
+/**
+ * @brief Translate assignment expression
+ */
+static TACOperand translate_assignment(TACBuilder* builder, HBNode* hb_node) {
+    // Translate right-hand side first
+    TACOperand rhs = tac_build_from_ast(builder, hb_node->ast.binary.right);
+    
+    if (rhs.type == TAC_OP_NONE) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    // Translate left-hand side (should be lvalue)
+    TACOperand lhs = tac_build_from_ast(builder, hb_node->ast.binary.left);
+    
+    if (lhs.type == TAC_OP_NONE) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    // Emit assignment
+    tac_emit_assign(builder, lhs, rhs);
+    
+    return lhs;  // Assignment returns the assigned value
+}
+
+/**
+ * @brief Translate if statement
+ */
+static void translate_if_stmt(TACBuilder* builder, HBNode* hb_node) {
+    // Generate labels
+    TACOperand else_label = tac_new_label(builder);
+    TACOperand end_label = tac_new_label(builder);
+    
+    // Translate condition
+    TACOperand cond = tac_build_from_ast(builder, hb_node->ast.conditional.condition);
+    
+    if (cond.type == TAC_OP_NONE) {
+        builder->error_count++;
+        return;
+    }
+    
+    // Conditional jump to else
+    tac_emit_conditional_jump(builder, cond, else_label.data.label.offset, 1);
+    
+    // Then block
+    tac_build_from_ast(builder, hb_node->ast.conditional.then_stmt);
+    
+    // Jump to end (skip else)
+    if (hb_node->ast.conditional.else_stmt != 0) {
+        tac_emit_unconditional_jump(builder, end_label.data.label.offset);
+        
+        // Else label and block
+        tac_emit_label(builder, else_label.data.label.offset);
+        tac_build_from_ast(builder, hb_node->ast.conditional.else_stmt);
+    }
+    
+    // End label
+    tac_emit_label(builder, end_label.data.label.offset);
+}
+
+/**
+ * @brief Translate while statement
+ */
+static void translate_while_stmt(TACBuilder* builder, HBNode* hb_node) {
+    // Generate labels
+    TACOperand loop_start = tac_new_label(builder);
+    TACOperand loop_end = tac_new_label(builder);
+    
+    // Loop start label
+    tac_emit_label(builder, loop_start.data.label.offset);
+    
+    // Translate condition
+    TACOperand cond = tac_build_from_ast(builder, hb_node->ast.conditional.condition);
+    
+    if (cond.type == TAC_OP_NONE) {
+        builder->error_count++;
+        return;
+    }
+    
+    // Conditional jump to end
+    tac_emit_conditional_jump(builder, cond, loop_end.data.label.offset, 1);
+    
+    // Loop body
+    tac_build_from_ast(builder, hb_node->ast.conditional.then_stmt);
+    
+    // Jump back to start
+    tac_emit_unconditional_jump(builder, loop_start.data.label.offset);
+    
+    // End label
+    tac_emit_label(builder, loop_end.data.label.offset);
+}
+
+/**
+ * @brief Translate return statement
+ */
+static void translate_return_stmt(TACBuilder* builder, HBNode* hb_node) {
+    if (hb_node->ast.children.child1 != 0) {
+        // Return with value
+        TACOperand value = tac_build_from_ast(builder, hb_node->ast.children.child1);
+        if (value.type != TAC_OP_NONE) {
+            tac_emit_instruction(builder, TAC_RETURN, TAC_OPERAND_NONE, value, TAC_OPERAND_NONE);
+        }
+    } else {
+        // Return void
+        tac_emit_instruction(builder, TAC_RETURN_VOID, TAC_OPERAND_NONE, 
+                           TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+    }
+}
+
+/**
+ * @brief Translate compound statement
+ */
+static void translate_compound_stmt(TACBuilder* builder, HBNode* hb_node) {
+    // Translate statements in sequence
+    ASTNodeIdx_t stmt = hb_node->ast.compound.statements;
+    while (stmt != 0) {
+        tac_build_from_ast(builder, stmt);
+        
+        // Move to next statement (simplified - assumes linked list)
+        HBNode* stmt_node = HBGet(stmt, HBMODE_AST);
+        if (stmt_node) {
+            stmt = stmt_node->ast.children.child1;  // Next statement
+        } else {
+            break;
+        }
+    }
+}
+
+/**
+ * @brief Translate function call
+ */
+static TACOperand translate_function_call(TACBuilder* builder, HBNode* hb_node) {
+    // Get function operand
+    TACOperand func = tac_build_from_ast(builder, hb_node->ast.call.function);
+    
+    if (func.type == TAC_OP_NONE) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
+    }
+    
+    // Translate arguments and emit param instructions
+    int param_count = hb_node->ast.call.arg_count;
+    ASTNodeIdx_t arg = hb_node->ast.call.arguments;
+    
+    for (int i = 0; i < param_count && arg != 0; i++) {
+        TACOperand param = tac_build_from_ast(builder, arg);
+        if (param.type != TAC_OP_NONE) {
+            tac_emit_instruction(builder, TAC_PARAM, TAC_OPERAND_NONE, param, TAC_OPERAND_NONE);
+        }
+        
+        // Move to next argument (simplified)
+        HBNode* arg_node = HBGet(arg, HBMODE_AST);
+        if (arg_node) {
+            arg = arg_node->ast.children.child1;
+        } else {
+            break;
+        }
+    }
+    
+    // Generate result temporary
+    TACOperand result = tac_new_temp(builder, hb_node->ast.call.return_type);
+    
+    // Emit call instruction
+    tac_emit_instruction(builder, TAC_CALL, result, func, TAC_OPERAND_NONE);
+    
+    return result;
+}
+void tac_builder_print_stats(TACBuilder* builder) {
+    if (builder == NULL) {
+        printf("TAC Builder: NULL\n");
+        return;
+    }
+    
+    printf("TAC Builder Statistics:\n");
+    printf("  Errors: %d\n", builder->error_count);
+    printf("  Warnings: %d\n", builder->warning_count);
+    printf("  Next temporary: t%d\n", builder->temp_mgr ? builder->temp_mgr->next_temp : 0);
+    printf("  Next label: L%d\n", builder->label_counter);
+    
+    tacstore_print_stats();
+}
+
+/**
+ * @brief Validate TAC operand
+ */
+int tac_validate_operand(TACOperand operand) {
+    switch (operand.type) {
+        case TAC_OP_NONE:
+            return 1;  // Always valid
+            
+        case TAC_OP_TEMP:
+        case TAC_OP_VAR:
+            return operand.data.variable.id > 0;
+            
+        case TAC_OP_IMMEDIATE:
+            return 1;  // Any immediate value is valid
+            
+        case TAC_OP_LABEL:
+            return operand.data.label.offset > 0;
+            
+        case TAC_OP_FUNCTION:
+            return operand.data.function.func_id > 0;
+            
+        default:
+            return 0;  // Unknown type
+    }
+}

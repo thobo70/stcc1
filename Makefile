@@ -24,6 +24,7 @@ STORAGE_SRC = $(SRCDIR)/storage
 ERROR_SRC = $(SRCDIR)/error
 UTILS_SRC = $(SRCDIR)/utils
 DEMO_SRC = $(SRCDIR)/demo
+IR_SRC = $(SRCDIR)/ir
 
 OBJDIR = obj
 BINDIR = bin
@@ -65,7 +66,7 @@ OBJ0 = $(OBJDIR)/cc0.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/hash.o
 OBJ0t = $(OBJDIR)/cc0t.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/hash.o
 
 # Enhanced cc1 with core features (simplified AST integration)
-OBJ1 = $(OBJDIR)/cc1.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/hash.o $(OBJDIR)/symtab.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/error_core.o $(OBJDIR)/error_stages.o $(OBJDIR)/ast_builder.o
+OBJ1 = $(OBJDIR)/cc1.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/hash.o $(OBJDIR)/symtab.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/error_core.o $(OBJDIR)/error_stages.o $(OBJDIR)/ast_builder.o $(OBJDIR)/tac_store.o $(OBJDIR)/tac_builder.o $(OBJDIR)/tac_printer.o
 
 # cc1t for AST and symbol table inspection
 OBJ1t = $(OBJDIR)/cc1t.o $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o
@@ -75,6 +76,10 @@ OUT0 = $(BINDIR)/cc0
 OUT0t = $(BINDIR)/cc0t
 OUT1 = $(BINDIR)/cc1
 OUT1t = $(BINDIR)/cc1t
+TAC_TEST = $(BINDIR)/tac_test
+
+# TAC test program objects
+TAC_TEST_OBJ = $(OBJDIR)/tac_test.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/tac_store.o $(OBJDIR)/tac_builder.o $(OBJDIR)/tac_printer.o
 
 # Dependency generation for all source files including enhanced components
 .depend: $(SRC) $(ENHANCED_SRC)
@@ -86,6 +91,9 @@ OUT1t = $(BINDIR)/cc1t
 
 # Default target
 all: $(OBJDIR) $(BINDIR) $(OUT0) $(OUT0t) $(OUT1) $(OUT1t)
+
+# TAC test target
+tac-test: $(OBJDIR) $(BINDIR) $(TAC_TEST)
 
 # Doxygen documentation
 $(DOCDIR)/html/index.html: $(DOCDIR) Doxyfile $(SRC)
@@ -141,6 +149,10 @@ $(OUT1t): $(OBJ1t)
 $(OUT0t): $(OBJ0t)
 	$(CC) $(CFLAGS) -o $(OUT0t) $(OBJ0t)
 
+# TAC test program
+$(TAC_TEST): $(TAC_TEST_OBJ)
+	$(CC) $(CFLAGS) -o $(TAC_TEST) $(TAC_TEST_OBJ)
+
 # Pattern rules to compile .c files to .o files with new directory structure
 $(OBJDIR)/cc0.o: $(LEXER_SRC)/cc0.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -179,6 +191,20 @@ $(OBJDIR)/error_stages.o: $(ERROR_SRC)/error_stages.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/ast_builder.o: $(AST_SRC)/ast_builder.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# TAC (Three-Address Code) module compilation rules
+$(OBJDIR)/tac_store.o: $(IR_SRC)/tac_store.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/tac_builder.o: $(IR_SRC)/tac_builder.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/tac_printer.o: $(IR_SRC)/tac_printer.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Demo programs compilation rules
+$(OBJDIR)/tac_test.o: $(DEMO_SRC)/tac_test.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Clean up build files

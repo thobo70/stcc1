@@ -1,0 +1,341 @@
+/**
+ * @file tac_printer.c
+ * @brief TAC pretty printing and debugging implementation
+ * @author Thomas Boos (tboos70@gmail.com)
+ * @version 0.1
+ * @date 2025-07-16
+ * @copyright Copyright (c) 2024-2025 Thomas Boos
+ */
+
+#include "tac_printer.h"
+#include "tac_builder.h"
+#include <stdio.h>
+
+/**
+ * @brief Print a TAC operand
+ */
+void tac_print_operand(TACOperand operand) {
+    switch (operand.type) {
+        case TAC_OP_NONE:
+            printf("_");
+            break;
+            
+        case TAC_OP_TEMP:
+            printf("t%d", operand.data.variable.id);
+            break;
+            
+        case TAC_OP_VAR:
+            printf("v%d", operand.data.variable.id);
+            if (operand.data.variable.scope > 0) {
+                printf(".%d", operand.data.variable.scope);
+            }
+            break;
+            
+        case TAC_OP_IMMEDIATE:
+            printf("%d", operand.data.immediate.value);
+            break;
+            
+        case TAC_OP_LABEL:
+            printf("L%d", operand.data.label.offset);
+            break;
+            
+        case TAC_OP_FUNCTION:
+            printf("f%d", operand.data.function.func_id);
+            break;
+            
+        case TAC_OP_GLOBAL:
+            printf("g%d", operand.data.variable.id);
+            break;
+            
+        case TAC_OP_PARAM:
+            printf("p%d", operand.data.variable.id);
+            break;
+            
+        case TAC_OP_RETURN_VAL:
+            printf("ret");
+            break;
+            
+        default:
+            printf("?%d", operand.data.raw);
+            break;
+    }
+}
+
+/**
+ * @brief Print a TAC instruction
+ */
+void tac_print_instruction(TACInstruction instr, TACIdx_t idx) {
+    printf("[%4d] ", idx);
+    
+    // Handle special cases
+    if (instr.opcode == TAC_LABEL) {
+        tac_print_operand(instr.result);
+        printf(":\n");
+        return;
+    }
+    
+    if (instr.opcode == TAC_GOTO) {
+        printf("goto ");
+        tac_print_operand(instr.operand1);
+        printf("\n");
+        return;
+    }
+    
+    if (instr.opcode == TAC_IF_FALSE || instr.opcode == TAC_IF_TRUE) {
+        printf("%s ", tac_opcode_to_string(instr.opcode));
+        tac_print_operand(instr.operand1);
+        printf(" goto ");
+        tac_print_operand(instr.operand2);
+        printf("\n");
+        return;
+    }
+    
+    if (instr.opcode == TAC_RETURN) {
+        printf("return ");
+        if (instr.operand1.type != TAC_OP_NONE) {
+            tac_print_operand(instr.operand1);
+        }
+        printf("\n");
+        return;
+    }
+    
+    if (instr.opcode == TAC_RETURN_VOID) {
+        printf("return\n");
+        return;
+    }
+    
+    if (instr.opcode == TAC_PARAM) {
+        printf("param ");
+        tac_print_operand(instr.operand1);
+        printf("\n");
+        return;
+    }
+    
+    // Binary operations with result
+    if (instr.result.type != TAC_OP_NONE) {
+        tac_print_operand(instr.result);
+        printf(" = ");
+    }
+    
+    // Print operation
+    if (instr.operand2.type != TAC_OP_NONE) {
+        // Binary operation
+        tac_print_operand(instr.operand1);
+        printf(" %s ", tac_opcode_to_string(instr.opcode));
+        tac_print_operand(instr.operand2);
+    } else if (instr.operand1.type != TAC_OP_NONE) {
+        // Unary operation or assignment
+        if (instr.opcode == TAC_ASSIGN) {
+            tac_print_operand(instr.operand1);
+        } else {
+            printf("%s ", tac_opcode_to_string(instr.opcode));
+            tac_print_operand(instr.operand1);
+        }
+    } else {
+        // No operands
+        printf("%s", tac_opcode_to_string(instr.opcode));
+    }
+    
+    // Print flags if any
+    if (instr.flags != TAC_FLAG_NONE) {
+        printf("  ; flags: 0x%04x", instr.flags);
+    }
+    
+    printf("\n");
+}
+
+/**
+ * @brief Print all TAC instructions
+ */
+void tac_print_all_instructions(void) {
+    TACIdx_t count = tacstore_getidx();
+    
+    printf("=== TAC Instructions ===\n");
+    printf("Total instructions: %d\n\n", count);
+    
+    for (TACIdx_t i = 1; i <= count; i++) {
+        TACInstruction instr = tacstore_get(i);
+        tac_print_instruction(instr, i);
+    }
+    
+    printf("\n");
+}
+
+/**
+ * @brief Print TAC instructions in a range
+ */
+void tac_print_range(TACIdx_t start, TACIdx_t end) {
+    TACIdx_t count = tacstore_getidx();
+    
+    if (start < 1) start = 1;
+    if (end > count) end = count;
+    
+    printf("=== TAC Instructions [%d-%d] ===\n", start, end);
+    
+    for (TACIdx_t i = start; i <= end; i++) {
+        TACInstruction instr = tacstore_get(i);
+        tac_print_instruction(instr, i);
+    }
+    
+    printf("\n");
+}
+
+/**
+ * @brief Write TAC to file
+ */
+void tac_write_to_file(const char* filename) {
+    FILE* fp = fopen(filename, "w");
+    if (fp == NULL) {
+        perror("tac_write_to_file");
+        return;
+    }
+    
+    TACIdx_t count = tacstore_getidx();
+    
+    fprintf(fp, "; TAC Instructions - Generated by STCC1\n");
+    fprintf(fp, "; Total instructions: %d\n\n", count);
+    
+    for (TACIdx_t i = 1; i <= count; i++) {
+        TACInstruction instr = tacstore_get(i);
+        
+        // Redirect printf to file by temporarily changing stdout
+        FILE* old_stdout = stdout;
+        stdout = fp;
+        tac_print_instruction(instr, i);
+        stdout = old_stdout;
+    }
+    
+    fclose(fp);
+    printf("TAC written to %s\n", filename);
+}
+
+/**
+ * @brief Write TAC range to file
+ */
+void tac_write_range_to_file(const char* filename, TACIdx_t start, TACIdx_t end) {
+    FILE* fp = fopen(filename, "w");
+    if (fp == NULL) {
+        perror("tac_write_range_to_file");
+        return;
+    }
+    
+    TACIdx_t count = tacstore_getidx();
+    
+    if (start < 1) start = 1;
+    if (end > count) end = count;
+    
+    fprintf(fp, "; TAC Instructions [%d-%d] - Generated by STCC1\n\n", start, end);
+    
+    for (TACIdx_t i = start; i <= end; i++) {
+        TACInstruction instr = tacstore_get(i);
+        
+        // Redirect printf to file
+        FILE* old_stdout = stdout;
+        stdout = fp;
+        tac_print_instruction(instr, i);
+        stdout = old_stdout;
+    }
+    
+    fclose(fp);
+    printf("TAC range [%d-%d] written to %s\n", start, end, filename);
+}
+
+/**
+ * @brief Print TAC statistics
+ */
+void tac_print_statistics(void) {
+    TACIdx_t count = tacstore_getidx();
+    
+    // Count different instruction types
+    int opcode_counts[256] = {0};  // Assuming opcodes fit in 8 bits
+    int operand_type_counts[16] = {0};
+    
+    for (TACIdx_t i = 1; i <= count; i++) {
+        TACInstruction instr = tacstore_get(i);
+        
+        if (instr.opcode < 256) {
+            opcode_counts[instr.opcode]++;
+        }
+        
+        if (instr.result.type < 16) {
+            operand_type_counts[instr.result.type]++;
+        }
+        if (instr.operand1.type < 16) {
+            operand_type_counts[instr.operand1.type]++;
+        }
+        if (instr.operand2.type < 16) {
+            operand_type_counts[instr.operand2.type]++;
+        }
+    }
+    
+    printf("=== TAC Statistics ===\n");
+    printf("Total instructions: %d\n", count);
+    printf("Memory usage: %zu bytes\n", (size_t)count * sizeof(TACInstruction));
+    printf("\nInstruction type distribution:\n");
+    
+    // Print non-zero instruction counts
+    for (int op = 0; op < 256; op++) {
+        if (opcode_counts[op] > 0) {
+            printf("  %-12s: %d\n", tac_opcode_to_string((TACOpcode)op), opcode_counts[op]);
+        }
+    }
+    
+    printf("\nOperand type distribution:\n");
+    for (int type = 0; type < 16; type++) {
+        if (operand_type_counts[type] > 0) {
+            printf("  %-8s: %d\n", tac_operand_type_to_string((TACOperandType)type), 
+                   operand_type_counts[type]);
+        }
+    }
+    
+    printf("\n");
+}
+
+/**
+ * @brief Analyze operand usage patterns
+ */
+void tac_analyze_operand_usage(void) {
+    TACIdx_t count = tacstore_getidx();
+    
+    int max_temp = 0;
+    int max_var = 0;
+    int max_label = 0;
+    
+    for (TACIdx_t i = 1; i <= count; i++) {
+        TACInstruction instr = tacstore_get(i);
+        
+        TACOperand operands[3] = {instr.result, instr.operand1, instr.operand2};
+        
+        for (int j = 0; j < 3; j++) {
+            switch (operands[j].type) {
+                case TAC_OP_TEMP:
+                    if (operands[j].data.variable.id > max_temp) {
+                        max_temp = operands[j].data.variable.id;
+                    }
+                    break;
+                    
+                case TAC_OP_VAR:
+                    if (operands[j].data.variable.id > max_var) {
+                        max_var = operands[j].data.variable.id;
+                    }
+                    break;
+                    
+                case TAC_OP_LABEL:
+                    if (operands[j].data.label.offset > max_label) {
+                        max_label = operands[j].data.label.offset;
+                    }
+                    break;
+                    
+                default:
+                    break;
+            }
+        }
+    }
+    
+    printf("=== Operand Usage Analysis ===\n");
+    printf("Maximum temporary ID: t%d\n", max_temp);
+    printf("Maximum variable ID: v%d\n", max_var);
+    printf("Maximum label ID: L%d\n", max_label);
+    printf("Estimated register pressure: %d\n", max_temp);
+    printf("\n");
+}
