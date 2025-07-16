@@ -39,6 +39,34 @@ int tacstore_init(const char* filename) {
 }
 
 /**
+ * @brief Open existing TAC store file for reading
+ */
+int tacstore_open(const char* filename) {
+    if (g_tacstore.fp_tac != NULL) {
+        tacstore_close();
+    }
+    
+    strncpy(g_tacstore.filename, filename, sizeof(g_tacstore.filename) - 1);
+    g_tacstore.filename[sizeof(g_tacstore.filename) - 1] = '\0';
+    
+    g_tacstore.fp_tac = fopen(filename, "rb");
+    if (g_tacstore.fp_tac == NULL) {
+        perror("tacstore_open: Cannot open TAC file");
+        return 0;
+    }
+    
+    // Determine file size and number of instructions
+    fseek(g_tacstore.fp_tac, 0, SEEK_END);
+    long file_size = ftell(g_tacstore.fp_tac);
+    rewind(g_tacstore.fp_tac);
+    
+    g_tacstore.current_idx = (TACIdx_t)(file_size / sizeof(TACInstruction));
+    g_tacstore.max_instructions = 65535;  // 16-bit index limit
+    
+    return 1;
+}
+
+/**
  * @brief Close TAC store and cleanup
  */
 void tacstore_close(void) {

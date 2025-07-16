@@ -25,6 +25,7 @@ typedef struct TACStore {
 
 // TAC store API (similar to astore/sstore/tstore)
 int tacstore_init(const char* filename);
+int tacstore_open(const char* filename);
 void tacstore_close(void);
 TACIdx_t tacstore_add(const TACInstruction* instr);
 TACInstruction tacstore_get(TACIdx_t idx);

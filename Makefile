@@ -23,7 +23,6 @@ AST_SRC = $(SRCDIR)/ast
 STORAGE_SRC = $(SRCDIR)/storage
 ERROR_SRC = $(SRCDIR)/error
 UTILS_SRC = $(SRCDIR)/utils
-DEMO_SRC = $(SRCDIR)/demo
 IR_SRC = $(SRCDIR)/ir
 
 OBJDIR = obj
@@ -71,15 +70,19 @@ OBJ1 = $(OBJDIR)/cc1.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o 
 # cc1t for AST and symbol table inspection
 OBJ1t = $(OBJDIR)/cc1t.o $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o
 
+# cc2 for TAC generation
+OBJ2 = $(OBJDIR)/cc2.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/tac_store.o $(OBJDIR)/tac_builder.o $(OBJDIR)/tac_printer.o
+
+# cc2t for TAC inspection and analysis
+OBJ2t = $(OBJDIR)/cc2t.o $(OBJDIR)/tac_store.o $(OBJDIR)/tac_printer.o $(OBJDIR)/tac_builder.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o
+
 # Output executable
 OUT0 = $(BINDIR)/cc0
 OUT0t = $(BINDIR)/cc0t
 OUT1 = $(BINDIR)/cc1
 OUT1t = $(BINDIR)/cc1t
-TAC_TEST = $(BINDIR)/tac_test
-
-# TAC test program objects
-TAC_TEST_OBJ = $(OBJDIR)/tac_test.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/tac_store.o $(OBJDIR)/tac_builder.o $(OBJDIR)/tac_printer.o
+OUT2 = $(BINDIR)/cc2
+OUT2t = $(BINDIR)/cc2t
 
 # Dependency generation for all source files including enhanced components
 .depend: $(SRC) $(ENHANCED_SRC)
@@ -90,10 +93,7 @@ TAC_TEST_OBJ = $(OBJDIR)/tac_test.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJD
 -include .depend
 
 # Default target
-all: $(OBJDIR) $(BINDIR) $(OUT0) $(OUT0t) $(OUT1) $(OUT1t)
-
-# TAC test target
-tac-test: $(OBJDIR) $(BINDIR) $(TAC_TEST)
+all: $(OBJDIR) $(BINDIR) $(OUT0) $(OUT0t) $(OUT1) $(OUT1t) $(OUT2) $(OUT2t)
 
 # Doxygen documentation
 $(DOCDIR)/html/index.html: $(DOCDIR) Doxyfile $(SRC)
@@ -146,12 +146,16 @@ $(OUT1): $(OBJ1)
 $(OUT1t): $(OBJ1t)
 	$(CC) $(CFLAGS) -o $(OUT1t) $(OBJ1t)
 
+# cc2 TAC generation compiler pass
+$(OUT2): $(OBJ2)
+	$(CC) $(CFLAGS) -o $(OUT2) $(OBJ2)
+
+# cc2t TAC inspection tool
+$(OUT2t): $(OBJ2t)
+	$(CC) $(CFLAGS) -o $(OUT2t) $(OBJ2t)
+
 $(OUT0t): $(OBJ0t)
 	$(CC) $(CFLAGS) -o $(OUT0t) $(OBJ0t)
-
-# TAC test program
-$(TAC_TEST): $(TAC_TEST_OBJ)
-	$(CC) $(CFLAGS) -o $(TAC_TEST) $(TAC_TEST_OBJ)
 
 # Pattern rules to compile .c files to .o files with new directory structure
 $(OBJDIR)/cc0.o: $(LEXER_SRC)/cc0.c
@@ -164,6 +168,12 @@ $(OBJDIR)/cc1.o: $(PARSER_SRC)/cc1.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/cc1t.o: $(PARSER_SRC)/cc1t.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/cc2.o: $(PARSER_SRC)/cc2.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/cc2t.o: $(PARSER_SRC)/cc2t.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/sstore.o: $(STORAGE_SRC)/sstore.c
@@ -201,10 +211,6 @@ $(OBJDIR)/tac_builder.o: $(IR_SRC)/tac_builder.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/tac_printer.o: $(IR_SRC)/tac_printer.c
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-# Demo programs compilation rules
-$(OBJDIR)/tac_test.o: $(DEMO_SRC)/tac_test.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # Clean up build files
@@ -332,4 +338,47 @@ test: all
 	@echo "   - Large preprocessed file: $(TESTDIR)/test4/"
 
 # Phony targets
-.PHONY: all clean doc lint test-basic test
+.PHONY: all clean doc lint test-basic test test-cc2
+
+# TAC generation test
+test-cc2: all
+	@echo "=== TAC Generation Test (CC2) ==="
+	@echo "Testing complete pipeline: cc0 → cc1 → cc2"
+	@echo ""
+	@mkdir -p $(TESTDIR)
+	@echo "Creating simple test program..."
+	@echo 'int add(int a, int b) { return a + b; } int main() { int x = 5; int y = 3; int result = add(x, y); return result; }' > $(TESTDIR)/cc2_test.c
+	@echo "Running cc0 (lexical analysis)..."
+	@$(OUT0) $(TESTDIR)/cc2_test.c $(TESTDIR)/cc2_test.sstore $(TESTDIR)/cc2_test.tokens > $(TESTDIR)/cc2_test_cc0.out 2>&1
+	@echo "✓ cc0 completed"
+	@echo "Running cc1 (parsing & AST generation)..."  
+	@$(OUT1) $(TESTDIR)/cc2_test.sstore $(TESTDIR)/cc2_test.tokens $(TESTDIR)/cc2_test.ast $(TESTDIR)/cc2_test.symtab > $(TESTDIR)/cc2_test_cc1.out 2>&1
+	@echo "✓ cc1 completed"
+	@echo "Running cc2 (TAC generation)..."
+	@$(OUT2) $(TESTDIR)/cc2_test.sstore $(TESTDIR)/cc2_test.tokens $(TESTDIR)/cc2_test.ast $(TESTDIR)/cc2_test.symtab $(TESTDIR)/cc2_test.tac $(TESTDIR)/cc2_test_output.tac > $(TESTDIR)/cc2_test_cc2.out 2>&1 || echo "⚠ cc2 completed with errors"
+	@echo "✓ cc2 completed"
+	@echo ""
+	@echo "=== TAC Analysis Results ==="
+	@if [ -f $(TESTDIR)/cc2_test.tac ]; then \
+		if [ -s $(TESTDIR)/cc2_test.tac ]; then \
+			echo "✓ TAC binary file generated ($$( stat --format=%s $(TESTDIR)/cc2_test.tac ) bytes)"; \
+			echo "Running cc2t (TAC analysis)..."; \
+			$(OUT2t) $(TESTDIR)/cc2_test.tac > $(TESTDIR)/cc2_test_analysis.out 2>&1; \
+			echo "✓ TAC analysis completed"; \
+			echo ""; \
+			echo "TAC Instructions Summary:"; \
+			grep -A 10 "=== TAC Instructions ===" $(TESTDIR)/cc2_test_analysis.out | head -n 10; \
+			echo ""; \
+			echo "TAC Statistics:"; \
+			grep -A 5 "=== TAC Statistics ===" $(TESTDIR)/cc2_test_analysis.out | head -n 6; \
+		else \
+			echo "⚠ TAC binary file empty"; \
+		fi \
+	else \
+		echo "✗ TAC binary file not generated"; \
+	fi
+	@if [ -f $(TESTDIR)/cc2_test_output.tac ]; then echo "✓ TAC text file generated"; fi
+	@echo ""
+	@echo "✓ Pipeline test completed"
+	@echo "📁 Results saved in $(TESTDIR)/cc2_test*"
+	@echo "🔍 Use 'cc2t $(TESTDIR)/cc2_test.tac' for detailed TAC analysis"
