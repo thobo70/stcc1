@@ -1,4 +1,20 @@
-# STCC1 Small C Compiler - Restructured Source Organization
+# STCC1 Small C Com# Compiler flags for development
+CFLAGS = -g -Og -Wall -Wextra -Werror -Wformat=2 \
+         -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes \
+         -Wredundant-decls -Wundef -Wfloat-equal -std=c99 -D_GNU_SOURCE
+
+# Alternative flags for different development phases:
+# Debug build (slower but more thorough checking):
+# CFLAGS = -g -O0 -Wall -Wextra -Wpedantic -Werror -fsanitize=address -fsanitize=undefined -fstack-protector-strong -std=c99
+# 
+# Strict build (with pedantic and conversion warnings - may need code fixes):
+# CFLAGS = -g -Og -Wall -Wextra -Wpedantic -Werror -Wformat=2 -Wconversion -Wsign-conversion -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wundef -Wfloat-equal -std=c99 -D_GNU_SOURCE
+#
+# Release build (optimized):
+# CFLAGS = -O2 -DNDEBUG -Wall -Wextra -std=c99
+# 
+# Permissive build (for fixing warnings gradually):
+# CFLAGS = -g -Og -Wall -Wextra -std=c99red Source Organization
 # Project directories
 SRCDIR = src
 LEXER_SRC = $(SRCDIR)/lexer
@@ -17,8 +33,23 @@ DOCDIR = docs
 # Compiler
 CC = gcc
 
-# Compiler flags
-CFLAGS = -g -Og -Wall -Wextra -std=c99
+# Compiler flags for development
+CFLAGS = -g -Og -Wall -Wextra -Werror -Wformat=2 \
+         -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes \
+         -Wredundant-decls -Wundef -Wfloat-equal -std=c99 -D_GNU_SOURCE
+
+# Alternative flags for different development phases:
+# Debug build (slower but more thorough checking):
+# CFLAGS = -g -O0 -Wall -Wextra -Wpedantic -Werror -fsanitize=address -fsanitize=undefined -fstack-protector-strong -std=c99
+# 
+# Strict build (with conversion warnings - may need code fixes):
+# CFLAGS = -g -Og -Wall -Wextra -Wpedantic -Werror -Wformat=2 -Wconversion -Wsign-conversion -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wundef -Wfloat-equal -std=c99 -D_GNU_SOURCE
+#
+# Release build (optimized):
+# CFLAGS = -O2 -DNDEBUG -Wall -Wextra -std=c99
+# 
+# Permissive build (for fixing warnings gradually):
+# CFLAGS = -g -Og -Wall -Wextra -std=c99
 
 # Source files with new directory structure
 SRC = $(LEXER_SRC)/cc0.c $(LEXER_SRC)/cc0t.c $(PARSER_SRC)/cc1.c $(PARSER_SRC)/cc1t.c $(STORAGE_SRC)/sstore.c $(STORAGE_SRC)/tstore.c $(STORAGE_SRC)/astore.c $(UTILS_SRC)/hash.c $(STORAGE_SRC)/symtab.c $(UTILS_SRC)/hmapbuf.c
@@ -34,7 +65,7 @@ OBJ0 = $(OBJDIR)/cc0.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/hash.o
 OBJ0t = $(OBJDIR)/cc0t.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/hash.o
 
 # Enhanced cc1 with core features (simplified AST integration)
-OBJ1 = $(OBJDIR)/cc1.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/hash.o $(OBJDIR)/symtab.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/error_core.o $(OBJDIR)/error_stages.o
+OBJ1 = $(OBJDIR)/cc1.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/hash.o $(OBJDIR)/symtab.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/error_core.o $(OBJDIR)/error_stages.o $(OBJDIR)/ast_builder.o
 
 # cc1t for AST and symbol table inspection
 OBJ1t = $(OBJDIR)/cc1t.o $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o
@@ -47,9 +78,11 @@ OUT1t = $(BINDIR)/cc1t
 
 # Dependency generation for all source files including enhanced components
 .depend: $(SRC) $(ENHANCED_SRC)
-	gcc -MM $^ > .depend
+	@mkdir -p $(OBJDIR)
+	@gcc -MM $(SRC) $(ENHANCED_SRC) | sed 's|^\([^:]*\)\.o:|$(OBJDIR)/\1.o:|' > .depend
 
-include .depend
+# Include dependencies if the file exists
+-include .depend
 
 # Default target
 all: $(OBJDIR) $(BINDIR) $(OUT0) $(OUT0t) $(OUT1) $(OUT1t)

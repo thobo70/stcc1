@@ -13,6 +13,7 @@
 
 #include "ast_builder.h"
 #include "../utils/hmapbuf.h"
+#include "../storage/tstore.h"
 
 /**
  * @brief Initialize AST builder for a compiler phase

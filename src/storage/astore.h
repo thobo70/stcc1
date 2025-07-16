@@ -11,9 +11,7 @@
 #ifndef ASTORE_H  // NOLINT
 #define ASTORE_H
 
-#include "../ast/astnode.h"
-
-typedef unsigned short ASTNodeIdx_t;  // NOLINT
+#include "../ast/ast_types.h"
 
 /**
  * @brief Initialize the abstract syntax tree store.

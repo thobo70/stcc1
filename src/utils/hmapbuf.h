@@ -50,4 +50,14 @@ HBNode *HBNew(HBMode_t mode);
 void HBTouched(HBNode *node);
 HBNode *HBGet(HMapIdx_t idx, HBMode_t mode);
 
+// Additional function prototypes
+void HBStore(HBNode *node);
+void HBLoad(HBNode *node);
+HMapIdx_t HBGetIdx(HBMode_t mode);
+HBNode *HBFind(HMapIdx_t idx, HBMode_t mode);
+void HBAdd(HBNode *node);
+void HBRemove(HBNode *node);
+HBNode *HBEmpty(void);
+void HBDelete(HBNode *node);
+
 #endif  // HMAPBUF_H // NOLINT

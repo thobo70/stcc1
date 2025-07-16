@@ -13,7 +13,7 @@
 #include "../storage/sstore.h"
 #include "../storage/astore.h"
 #include "../storage/symtab.h"
-#include "../ast/astnode.h"
+#include "../ast/ast_types.h"
 
 // Function prototypes
 static const char* ast_type_to_string(ASTNodeType type);
@@ -26,44 +26,77 @@ static void print_symbol_table(const char* symfile_path);
  */
 static const char* ast_type_to_string(ASTNodeType type) {
     switch (type) {
+        // Special nodes
         case AST_FREE: return "FREE";
         case AST_PROGRAM: return "PROGRAM";
-        case AST_FUNCTION: return "FUNCTION";
-        case AST_TYPEDEF: return "TYPEDEF";
-        case AST_DECLARATION: return "DECLARATION";
-        case AST_STATEMENT: return "STATEMENT";
-        case AST_EXPRESSION: return "EXPRESSION";
-        case AST_LITERAL: return "LITERAL";
-        case AST_IDENTIFIER: return "IDENTIFIER";
-        case AST_OPERATOR: return "OPERATOR";
-        case AST_ASSIGNMENT: return "ASSIGNMENT";
-        case AST_IF: return "IF";
-        case AST_WHILE: return "WHILE";
-        case AST_FOR: return "FOR";
-        case AST_DO: return "DO";
-        case AST_SWITCH: return "SWITCH";
-        case AST_CASE: return "CASE";
-        case AST_DEFAULT: return "DEFAULT";
-        case AST_BREAK: return "BREAK";
-        case AST_CONTINUE: return "CONTINUE";
-        case AST_GOTO: return "GOTO";
-        case AST_RETURN: return "RETURN";
-        case AST_SIZEOF: return "SIZEOF";
-        case AST_CALL: return "CALL";
-        case AST_CAST: return "CAST";
-        case AST_INDEX: return "INDEX";
-        case AST_MEMBER: return "MEMBER";
-        case AST_POINTER: return "POINTER";
-        case AST_DEREFERENCE: return "DEREFERENCE";
-        case AST_ADDRESS: return "ADDRESS";
-        case AST_LOGICAL: return "LOGICAL";
-        case AST_CONDITIONAL: return "CONDITIONAL";
-        case AST_COMMA: return "COMMA";
-        case AST_BLOCK: return "BLOCK";
-        case AST_LABEL: return "LABEL";
-        case AST_GOTO_LABEL: return "GOTO_LABEL";
-        case AST_EMPTY: return "EMPTY";
+        case AST_TRANSLATION_UNIT: return "TRANSLATION_UNIT";
         case AST_EOF: return "EOF";
+        case AST_ERROR: return "ERROR";
+        
+        // Declaration nodes
+        case AST_FUNCTION_DECL: return "FUNCTION_DECL";
+        case AST_FUNCTION_DEF: return "FUNCTION_DEF";
+        case AST_VAR_DECL: return "VAR_DECL";
+        case AST_PARAM_DECL: return "PARAM_DECL";
+        case AST_FIELD_DECL: return "FIELD_DECL";
+        case AST_TYPEDEF_DECL: return "TYPEDEF_DECL";
+        case AST_STRUCT_DECL: return "STRUCT_DECL";
+        case AST_UNION_DECL: return "UNION_DECL";
+        case AST_ENUM_DECL: return "ENUM_DECL";
+        case AST_ENUM_CONSTANT: return "ENUM_CONSTANT";
+        
+        // Type nodes
+        case AST_TYPE_BASIC: return "TYPE_BASIC";
+        case AST_TYPE_POINTER: return "TYPE_POINTER";
+        case AST_TYPE_ARRAY: return "TYPE_ARRAY";
+        case AST_TYPE_FUNCTION: return "TYPE_FUNCTION";
+        case AST_TYPE_STRUCT: return "TYPE_STRUCT";
+        case AST_TYPE_UNION: return "TYPE_UNION";
+        case AST_TYPE_ENUM: return "TYPE_ENUM";
+        case AST_TYPE_TYPEDEF: return "TYPE_TYPEDEF";
+        case AST_TYPE_QUALIFIER: return "TYPE_QUALIFIER";
+        case AST_TYPE_STORAGE: return "TYPE_STORAGE";
+        
+        // Statement nodes
+        case AST_STMT_COMPOUND: return "STMT_COMPOUND";
+        case AST_STMT_EXPRESSION: return "STMT_EXPRESSION";
+        case AST_STMT_IF: return "STMT_IF";
+        case AST_STMT_WHILE: return "STMT_WHILE";
+        case AST_STMT_FOR: return "STMT_FOR";
+        case AST_STMT_DO_WHILE: return "STMT_DO_WHILE";
+        case AST_STMT_SWITCH: return "STMT_SWITCH";
+        case AST_STMT_CASE: return "STMT_CASE";
+        case AST_STMT_DEFAULT: return "STMT_DEFAULT";
+        case AST_STMT_BREAK: return "STMT_BREAK";
+        case AST_STMT_CONTINUE: return "STMT_CONTINUE";
+        case AST_STMT_RETURN: return "STMT_RETURN";
+        case AST_STMT_GOTO: return "STMT_GOTO";
+        case AST_STMT_LABEL: return "STMT_LABEL";
+        case AST_STMT_EMPTY: return "STMT_EMPTY";
+        
+        // Expression nodes
+        case AST_EXPR_LITERAL: return "EXPR_LITERAL";
+        case AST_EXPR_IDENTIFIER: return "EXPR_IDENTIFIER";
+        case AST_EXPR_BINARY_OP: return "EXPR_BINARY_OP";
+        case AST_EXPR_UNARY_OP: return "EXPR_UNARY_OP";
+        case AST_EXPR_ASSIGN: return "EXPR_ASSIGN";
+        case AST_EXPR_CALL: return "EXPR_CALL";
+        case AST_EXPR_MEMBER: return "EXPR_MEMBER";
+        case AST_EXPR_MEMBER_PTR: return "EXPR_MEMBER_PTR";
+        case AST_EXPR_INDEX: return "EXPR_INDEX";
+        case AST_EXPR_CAST: return "EXPR_CAST";
+        case AST_EXPR_SIZEOF: return "EXPR_SIZEOF";
+        case AST_EXPR_CONDITIONAL: return "EXPR_CONDITIONAL";
+        case AST_EXPR_COMMA: return "EXPR_COMMA";
+        case AST_EXPR_INIT_LIST: return "EXPR_INIT_LIST";
+        case AST_EXPR_COMPOUND_LITERAL: return "EXPR_COMPOUND_LITERAL";
+        
+        // Literal subtypes
+        case AST_LIT_INTEGER: return "LIT_INTEGER";
+        case AST_LIT_FLOAT: return "LIT_FLOAT";
+        case AST_LIT_CHAR: return "LIT_CHAR";
+        case AST_LIT_STRING: return "LIT_STRING";
+        
         default: return "UNKNOWN";
     }
 }
@@ -91,6 +124,14 @@ static const char* sym_type_to_string(SymType type) {
 /**
  * @brief Print AST tree in hierarchical format
  */
+/**
+ * @brief Print AST tree recursively
+ * @param idx Root node index
+ * @param depth Current depth for indentation
+ * @note Currently unused in main display but available for tree visualization
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 static void print_ast_tree(ASTNodeIdx_t idx, int depth) {
     if (idx == 0) return;
     
@@ -103,39 +144,103 @@ static void print_ast_tree(ASTNodeIdx_t idx, int depth) {
     
     printf("[%d] %s", idx, ast_type_to_string(node.type));
     
-    if (node.tid != 0) {
-        printf(" (token: %d)", node.tid);
+    if (node.token_idx != 0) {
+        printf(" (token: %d)", node.token_idx);
     }
     
-    // Print node values based on type
+    // Print flags if present
+    if (node.flags != 0) {
+        printf(" (flags: 0x%x)", node.flags);
+    }
+    
+    // Print type info if present
+    if (node.type_idx != 0) {
+        printf(" (type: %d)", node.type_idx);
+    }
+    
+    // Print node values based on type category
     switch (node.type) {
-        case AST_LITERAL:
-        case AST_IDENTIFIER:
-            if (node.uvalue != 0) {
-                printf(" value: %lu", node.uvalue);
+        case AST_LIT_INTEGER:
+        case AST_LIT_FLOAT:
+        case AST_LIT_CHAR:
+        case AST_LIT_STRING:
+            if (node.binary.value.long_value != 0) {
+                printf(" value: %ld", node.binary.value.long_value);
             }
             break;
-        case AST_OPERATOR:
-        case AST_ASSIGNMENT:
-            printf(" op1: %d, op2: %d", node.o1, node.o2);
-            if (node.o3 != 0) printf(", op3: %d", node.o3);
-            if (node.o4 != 0) printf(", op4: %d", node.o4);
+        case AST_EXPR_IDENTIFIER:
+            if (node.binary.value.string_pos != 0) {
+                printf(" name_pos: %d", node.binary.value.string_pos);
+            }
+            break;
+        case AST_EXPR_BINARY_OP:
+            printf(" left: %d, right: %d", node.binary.left, node.binary.right);
+            break;
+        case AST_EXPR_UNARY_OP:
+            printf(" operand: %d, op: %d", node.unary.operand, node.unary.operator);
+            break;
+        case AST_STMT_IF:
+        case AST_STMT_WHILE:
+            printf(" condition: %d, then: %d", 
+                   node.conditional.condition, node.conditional.then_stmt);
+            if (node.conditional.else_stmt != 0) {
+                printf(", else: %d", node.conditional.else_stmt);
+            }
+            break;
+        case AST_STMT_COMPOUND:
+            printf(" declarations: %d, statements: %d", 
+                   node.compound.declarations, node.compound.statements);
+            break;
+        case AST_EXPR_CALL:
+            printf(" function: %d, args: %d, count: %d", 
+                   node.call.function, node.call.arguments, node.call.arg_count);
             break;
         default:
-            if (node.o1 != 0 || node.o2 != 0 || node.o3 != 0 || node.o4 != 0) {
-                printf(" children: %d, %d, %d, %d", node.o1, node.o2, node.o3, node.o4);
+            // Generic child display
+            if (node.children.child1 != 0 || node.children.child2 != 0 || 
+                node.children.child3 != 0 || node.children.child4 != 0) {
+                printf(" children: %d, %d, %d, %d", 
+                       node.children.child1, node.children.child2, 
+                       node.children.child3, node.children.child4);
             }
             break;
     }
     
     printf("\n");
     
-    // Recursively print child nodes
-    if (node.o1 != 0) print_ast_tree(node.o1, depth + 1);
-    if (node.o2 != 0) print_ast_tree(node.o2, depth + 1);
-    if (node.o3 != 0) print_ast_tree(node.o3, depth + 1);
-    if (node.o4 != 0) print_ast_tree(node.o4, depth + 1);
+    // Recursively print child nodes based on node type
+    switch (node.type) {
+        case AST_EXPR_BINARY_OP:
+            if (node.binary.left != 0) print_ast_tree(node.binary.left, depth + 1);
+            if (node.binary.right != 0) print_ast_tree(node.binary.right, depth + 1);
+            break;
+        case AST_EXPR_UNARY_OP:
+            if (node.unary.operand != 0) print_ast_tree(node.unary.operand, depth + 1);
+            break;
+        case AST_STMT_IF:
+        case AST_STMT_WHILE:
+            if (node.conditional.condition != 0) print_ast_tree(node.conditional.condition, depth + 1);
+            if (node.conditional.then_stmt != 0) print_ast_tree(node.conditional.then_stmt, depth + 1);
+            if (node.conditional.else_stmt != 0) print_ast_tree(node.conditional.else_stmt, depth + 1);
+            break;
+        case AST_STMT_COMPOUND:
+            if (node.compound.declarations != 0) print_ast_tree(node.compound.declarations, depth + 1);
+            if (node.compound.statements != 0) print_ast_tree(node.compound.statements, depth + 1);
+            break;
+        case AST_EXPR_CALL:
+            if (node.call.function != 0) print_ast_tree(node.call.function, depth + 1);
+            if (node.call.arguments != 0) print_ast_tree(node.call.arguments, depth + 1);
+            break;
+        default:
+            // Generic child traversal
+            if (node.children.child1 != 0) print_ast_tree(node.children.child1, depth + 1);
+            if (node.children.child2 != 0) print_ast_tree(node.children.child2, depth + 1);
+            if (node.children.child3 != 0) print_ast_tree(node.children.child3, depth + 1);
+            if (node.children.child4 != 0) print_ast_tree(node.children.child4, depth + 1);
+            break;
+    }
 }
+#pragma GCC diagnostic pop
 
 /**
  * @brief Print symbol table content
@@ -248,11 +353,14 @@ int main(int argc, char *argv[]) {
         ASTNode node = astore_get(i);
         if (node.type != AST_FREE) {
             printf("[%d] %s", i, ast_type_to_string(node.type));
-            if (node.tid != 0) printf(" (token: %d)", node.tid);
+            if (node.token_idx != 0) printf(" (token: %d)", node.token_idx);
             
             // Print basic node info without recursion to avoid deep traversal
-            if (node.o1 != 0 || node.o2 != 0 || node.o3 != 0 || node.o4 != 0) {
-                printf(" children: %d, %d, %d, %d", node.o1, node.o2, node.o3, node.o4);
+            if (node.children.child1 != 0 || node.children.child2 != 0 || 
+                node.children.child3 != 0 || node.children.child4 != 0) {
+                printf(" children: %d, %d, %d, %d", 
+                       node.children.child1, node.children.child2, 
+                       node.children.child3, node.children.child4);
             }
             printf("\n");
         }

@@ -392,6 +392,7 @@ void codegen_error_cleanup(void) {
  * @brief Report unsupported feature error
  */
 void codegen_error_unsupported_feature(ASTNodeIdx_t node_idx, const char* feature) {
+    (void)node_idx;  // Suppress unused parameter warning
     char message[256];
     char suggestion[256];
     
@@ -413,6 +414,7 @@ void codegen_error_unsupported_feature(ASTNodeIdx_t node_idx, const char* featur
  * @brief Report register spill error
  */
 void codegen_error_register_spill(ASTNodeIdx_t node_idx) {
+    (void)node_idx;  // Suppress unused parameter warning
     error_report_with_context(ERROR_WARNING, ERROR_CODEGEN, 0,
                              CODEGEN_ERROR_REGISTER_SPILL,
                              "Register spill required - performance may be affected",

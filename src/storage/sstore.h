@@ -20,7 +20,7 @@ sstore_pos_t sstore_str(const char *str, sstore_len_t length);
 int sstore_open(const char *fname);
 char *sstore_get(sstore_pos_t pos);
 
-void sstore_close();
+void sstore_close(void);
 
 
 

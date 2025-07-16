@@ -65,16 +65,16 @@ SymIdx_t symtab_add(SymTabEntry *entry) {
     perror(symfile);
     return 0;  // Indicate failure
   }
-  return idx;  // Indicate success by returning the ID
+  return idx + 1;  // Return 1-based index (0 reserved for failure)
 }
 
 
 
 SymIdx_t symtab_update(SymIdx_t idx, SymTabEntry *entry) {
-  if (fpsym == NULL) {
+  if (fpsym == NULL || idx == 0) {
     return 0;  // Indicate failure
   }
-  fseek(fpsym, idx * sizeof(SymTabEntry), SEEK_SET);
+  fseek(fpsym, (idx - 1) * sizeof(SymTabEntry), SEEK_SET);
   if (fwrite(entry, sizeof(SymTabEntry), 1, fpsym) != 1) {
     perror(symfile);
     return 0;  // Indicate failure
@@ -86,10 +86,10 @@ SymIdx_t symtab_update(SymIdx_t idx, SymTabEntry *entry) {
 
 SymTabEntry symtab_get(SymIdx_t idx) {
   SymTabEntry entry = {0};  // Initialize entry with default values
-  if (fpsym == NULL) {
+  if (fpsym == NULL || idx == 0) {
     return entry;
   }
-  fseek(fpsym, idx * sizeof(SymTabEntry), SEEK_SET);
+  fseek(fpsym, (idx - 1) * sizeof(SymTabEntry), SEEK_SET);
   if (fread(&entry, sizeof(SymTabEntry), 1, fpsym) != 1) {
     perror(symfile);
   }

@@ -85,6 +85,17 @@ typedef struct TokenType_t {
   sstore_pos_t sstpos;
 } TokenType_t;
 
+// Function prototypes
+static TokenType_t *is_operator(char *buf);
+static TokenType_t *is_keyword(char *buf);
+static TokenType_t *is_litnumber(char *lexeme);
+static TokenType_t *is_litstr(char *buf, char delim, TokenID_t id);
+static TokenType_t *is_id(char *buf);
+static int process_esc(int c);
+static void parse_directive(char *buf);
+static Token_t *nextToken(FILE *fp);
+static void printToken(Token_t *token);
+
 TokenType_t operatorTypes[] = {
   {SET_LEXEME_LEN("..."), TOKEN_TYPE_NAME(T_ELLIPSIS), 0},
   {SET_LEXEME_LEN("<<="), TOKEN_TYPE_NAME(T_LSHIFTEQ), 0},
@@ -186,7 +197,7 @@ unsigned int currline = 0;
  * @param buf The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the operator, or NULL if not an operator.
  */
-TokenType_t *is_operator(char *buf) {
+static TokenType_t *is_operator(char *buf) {
   for (int i = 0; operatorTypes[i].lexeme != NULL; i++) {
     if (strncmp(buf, operatorTypes[i].lexeme, operatorTypes[i].len) == 0) {
       if (operatorTypes[i].sstpos == 0) {
@@ -210,7 +221,7 @@ TokenType_t *is_operator(char *buf) {
  * @param buf The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the keyword, or NULL if not a keyword.
  */
-TokenType_t *is_keyword(char *buf) {
+static TokenType_t *is_keyword(char *buf) {
   for (int i = 0; keywordTypes[i].lexeme != NULL; i++) {
     if (strncmp(buf, keywordTypes[i].lexeme, keywordTypes[i].len) == 0) {
       if (keywordTypes[i].sstpos == 0) {
@@ -236,7 +247,7 @@ TokenType_t *is_keyword(char *buf) {
  * @param lexeme The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the numeric literal, or NULL if not a numeric literal.
  */
-TokenType_t *is_litnumber(char *lexeme) {
+static TokenType_t *is_litnumber(char *lexeme) {
   int i = 0;
   int dot = 0;    // Flag for decimal point, number must be a float
   int e = 0;      // Flag for exponent, number must be a float
@@ -304,7 +315,7 @@ TokenType_t *is_litnumber(char *lexeme) {
  * @param id The token ID to be assigned if a match is found.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the literal, or NULL if not a literal.
  */
-TokenType_t *is_litstr(char *buf, char delim, TokenID_t id) {
+static TokenType_t *is_litstr(char *buf, char delim, TokenID_t id) {
   if (buf[0] == delim) {
     buf++;
     int i = 0;
@@ -342,7 +353,7 @@ TokenType_t *is_litstr(char *buf, char delim, TokenID_t id) {
  * @param buf The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the identifier, or NULL if not an identifier.
  */
-TokenType_t *is_id(char *buf) {
+static TokenType_t *is_id(char *buf) {
   if (isalpha(buf[0]) || buf[0] == '_') {
     int i = 1;
     while (isalnum(buf[i]) || buf[i] == '_') {
@@ -368,7 +379,15 @@ TokenType_t *is_id(char *buf) {
  * @param c The escape sequence character to be processed.
  * @return int The corresponding character value of the escape sequence.
  */
-int process_esc(int c) {
+/**
+ * @brief Process escape sequences in character/string literals
+ * @param c Character following backslash
+ * @return Processed escape character or original with high bit set if invalid
+ * @note Currently unused but available for string literal processing
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+static int process_esc(int c) {
   switch (c) {
     case 'a': return '\a';
     case 'b': return '\b';
@@ -383,7 +402,7 @@ int process_esc(int c) {
   }
   return c | 0x100;
 }
-
+#pragma GCC diagnostic pop
 
 /**
  * @brief Parses a preprocessor directive for line number and file name.
@@ -393,7 +412,7 @@ int process_esc(int c) {
  * 
  * @param buf The input string containing the preprocessor directive.
  */
-void parse_directive(char *buf) {
+static void parse_directive(char *buf) {
   unsigned int line = 0;
   char *file = NULL;
   buf += 2;
@@ -438,7 +457,7 @@ void parse_directive(char *buf) {
  * @param fp The file pointer to the input file.
  * @return Token_t* A pointer to the next token, or NULL if an error occurs.
  */
-Token_t *nextToken(FILE *fp) {
+static Token_t *nextToken(FILE *fp) {
   static char buf[1024] = "";
   static char *pos = buf;
   static int line = 0;
@@ -500,7 +519,7 @@ Token_t *nextToken(FILE *fp) {
  * 
  * @param token The token to be printed.
  */
-void printToken(Token_t *token) {
+static void printToken(Token_t *token) {
   if (token == NULL) {
     return;
   }

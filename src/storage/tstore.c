@@ -59,27 +59,57 @@ TokenIdx_t tstore_add(Token_t *token) {
 }
 
 Token_t tstore_get(TokenIdx_t idx) {
-  Token_t token = {T_UNKNOWN, 0, 0, 0};
+  Token_t token = {T_EOF, 0, 0, 0};  // Default to EOF token
   if (fptoken == NULL) {
     return token;
   }
   fseek(fptoken, idx * sizeof(Token_t), SEEK_SET);
   if (ferror(fptoken)) {
     perror(tokenfile);
+    return token;
   }
-  fread(&token, sizeof(Token_t), 1, fptoken);
+  
+  // Check if we're at EOF before trying to read
+  if (feof(fptoken)) {
+    return token;  // Return EOF token
+  }
+  
+  size_t read_count = fread(&token, sizeof(Token_t), 1, fptoken);
+  if (read_count != 1) {
+    // If we couldn't read a complete token, return EOF
+    token.id = T_EOF;
+    token.pos = 0;
+    token.file = 0;
+    token.line = 0;
+  }
+  
   return token;
 }
 
 Token_t tstore_next(void) {
-  Token_t token = {T_UNKNOWN, 0, 0, 0};
+  Token_t token = {T_EOF, 0, 0, 0};  // Default to EOF token
   if (fptoken == NULL) {
     return token;
   }
   if (ferror(fptoken)) {
     perror(tokenfile);
+    return token;
   }
-  fread(&token, sizeof(Token_t), 1, fptoken);
+  
+  // Check if we're at EOF before trying to read
+  if (feof(fptoken)) {
+    return token;  // Return EOF token
+  }
+  
+  size_t read_count = fread(&token, sizeof(Token_t), 1, fptoken);
+  if (read_count != 1) {
+    // If we couldn't read a complete token, return EOF
+    token.id = T_EOF;
+    token.pos = 0;
+    token.file = 0;
+    token.line = 0;
+  }
+  
   return token;
 }
 
