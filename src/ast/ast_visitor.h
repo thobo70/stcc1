@@ -16,9 +16,11 @@
  * @brief AST visitor function type
  * @param node_idx The AST node being visited
  * @param context User-defined context data
- * @return 0 to continue traversal, non-zero to stop
+ * @return 0 to continue traversal,
+                     non-zero to stop
  */
-typedef int (*ast_visit_func_t)(ASTNodeIdx_t node_idx, void* context);
+typedef int (*ast_visit_func_t)(ASTNodeIdx_t node_idx,
+                     void* context);
 
 /**
  * @brief AST visitor callbacks for different node types
@@ -58,17 +60,24 @@ typedef struct ASTVisitor {
 
 // Visitor initialization
 void ast_visitor_init(ASTVisitor* visitor);
-void ast_visitor_set_context(ASTVisitor* visitor, void* context);
+void ast_visitor_set_context(ASTVisitor* visitor,
+                     void* context);
 
 // Core traversal functions
-int ast_visit_node(ASTVisitor* visitor, ASTNodeIdx_t node_idx);
-int ast_visit_subtree(ASTVisitor* visitor, ASTNodeIdx_t root_idx);
-int ast_visit_children(ASTVisitor* visitor, ASTNodeIdx_t node_idx);
+int ast_visit_node(ASTVisitor* visitor,
+                     ASTNodeIdx_t node_idx);
+int ast_visit_subtree(ASTVisitor* visitor,
+                     ASTNodeIdx_t root_idx);
+int ast_visit_children(ASTVisitor* visitor,
+                     ASTNodeIdx_t node_idx);
 
 // Specialized traversal patterns
-int ast_visit_preorder(ASTVisitor* visitor, ASTNodeIdx_t root_idx);
-int ast_visit_postorder(ASTVisitor* visitor, ASTNodeIdx_t root_idx);
-int ast_visit_level_order(ASTVisitor* visitor, ASTNodeIdx_t root_idx);
+int ast_visit_preorder(ASTVisitor* visitor,
+                     ASTNodeIdx_t root_idx);
+int ast_visit_postorder(ASTVisitor* visitor,
+                     ASTNodeIdx_t root_idx);
+int ast_visit_level_order(ASTVisitor* visitor,
+                     ASTNodeIdx_t root_idx);
 
 // Utility visitors for common tasks
 typedef struct {
@@ -78,8 +87,10 @@ typedef struct {
     int found_count;
 } FindNodesContext;
 
-int ast_find_nodes_by_type(ASTNodeIdx_t root_idx, ASTNodeType type,
-                          ASTNodeIdx_t* results, int max_results);
+int ast_find_nodes_by_type(ASTNodeIdx_t root_idx,
+                     ASTNodeType type,
+                          ASTNodeIdx_t* results,
+                     int max_results);
 
 typedef struct {
     int node_count;
@@ -88,7 +99,8 @@ typedef struct {
     size_t total_memory;
 } TreeStatsContext;
 
-void ast_get_tree_stats(ASTNodeIdx_t root_idx, TreeStatsContext* stats);
+void ast_get_tree_stats(ASTNodeIdx_t root_idx,
+                     TreeStatsContext* stats);
 
 // Transformation visitor support
 typedef struct {
@@ -103,6 +115,7 @@ typedef struct {
     int changes_made;
 } TransformContext;
 
-int ast_transform_tree(ASTNodeIdx_t root_idx, TransformContext* transform);
+int ast_transform_tree(ASTNodeIdx_t root_idx,
+                     TransformContext* transform);
 
 #endif  // SRC_AST_AST_VISITOR_H_

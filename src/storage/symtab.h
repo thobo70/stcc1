@@ -48,7 +48,8 @@ int symtab_init(const char *filename);
 int symtab_open(const char *filename);
 void symtab_close(void);
 SymIdx_t symtab_add(SymTabEntry *entry);
-SymIdx_t symtab_update(SymIdx_t idx, SymTabEntry *entry);
+SymIdx_t symtab_update(SymIdx_t idx,
+                     SymTabEntry *entry);
 SymTabEntry symtab_get(SymIdx_t idx);
 SymIdx_t symtab_get_count(void);
 

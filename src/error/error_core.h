@@ -97,10 +97,13 @@ void error_core_cleanup(void);
 void error_core_reset(void);
 
 // Error reporting - core interface
-CompilerError_t* error_core_report(ErrorLevel_t level, ErrorCategory_t category,
+CompilerError_t* error_core_report(ErrorLevel_t level,
+                     ErrorCategory_t category,
                                   const SourceLocation_t* location,
-                                  uint32_t error_code, const char* message,
-                                  const char* suggestion, const char* stage_name,
+                                  uint32_t error_code,
+                     const char* message,
+                                  const char* suggestion,
+                     const char* stage_name,
                                   void* stage_context);
 
 // Error state queries
@@ -118,12 +121,15 @@ void error_core_print_all_errors(void);
 // Source location utilities
 SourceLocation_t error_create_location(TokenIdx_t token_idx);
 SourceLocation_t error_create_location_with_pos(const char* filename,
-                                               uint32_t line, uint32_t column);
+                                               uint32_t line,
+                     uint32_t column);
 void error_extract_source_line(SourceLocation_t* location);
 
 // Error filtering and iteration
-typedef int (*error_filter_func_t)(const CompilerError_t* error, void* context);
-void error_core_iterate_errors(error_filter_func_t filter, void* context);
+typedef int (*error_filter_func_t)(const CompilerError_t* error,
+                     void* context);
+void error_core_iterate_errors(error_filter_func_t filter,
+                     void* context);
 
 // Configuration helpers
 ErrorConfig_t error_get_default_config(void);

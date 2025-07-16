@@ -36,7 +36,8 @@ typedef struct {
     TokenID_t sync_tokens[8];      // Tokens to synchronize to
     int sync_count;
     const char* production_name;   // Grammar production being parsed
-    int confidence_level;          // 0-100, confidence in recovery
+    int confidence_level;          // 0-100,
+                     confidence in recovery
 } RecoveryContext_t;
 
 // Recovery result
@@ -54,9 +55,12 @@ typedef RecoveryResult_t (*recovery_strategy_func_t)(const RecoveryContext_t* co
 // Generic recovery functions
 RecoveryResult_t recovery_suggest_action(const RecoveryContext_t* context);
 int recovery_attempt_action(const RecoveryResult_t* result);
-void recovery_init_context(RecoveryContext_t* context, TokenIdx_t error_token);
-void recovery_add_expected_token(RecoveryContext_t* context, TokenID_t token);
-void recovery_add_sync_token(RecoveryContext_t* context, TokenID_t token);
+void recovery_init_context(RecoveryContext_t* context,
+                     TokenIdx_t error_token);
+void recovery_add_expected_token(RecoveryContext_t* context,
+                     TokenID_t token);
+void recovery_add_sync_token(RecoveryContext_t* context,
+                     TokenID_t token);
 
 // ============================================================================
 // LEXICAL ERROR RECOVERY
@@ -85,7 +89,8 @@ RecoveryResult_t syntax_recovery_invalid_expression(const RecoveryContext_t* con
 // Syntax recovery helpers
 int syntax_sync_to_statement_end(void);
 int syntax_sync_to_declaration_start(void);
-int syntax_skip_balanced_delimiters(char open_delim, char close_delim);
+int syntax_skip_balanced_delimiters(char open_delim,
+                     char close_delim);
 int syntax_find_matching_delimiter(TokenID_t delimiter);
 
 // Statement-level recovery
@@ -124,8 +129,10 @@ typedef struct {
     int confidence;
 } TypeSuggestion_t;
 
-TypeSuggestion_t semantic_suggest_type_cast(TypeIdx_t from_type, TypeIdx_t to_type);
-int semantic_can_implicit_cast(TypeIdx_t from_type, TypeIdx_t to_type);
+TypeSuggestion_t semantic_suggest_type_cast(TypeIdx_t from_type,
+                     TypeIdx_t to_type);
+int semantic_can_implicit_cast(TypeIdx_t from_type,
+                     TypeIdx_t to_type);
 
 // Symbol recovery helpers
 typedef struct {
@@ -135,7 +142,8 @@ typedef struct {
 } SymbolSuggestion_t;
 
 SymbolSuggestion_t semantic_suggest_similar_symbol(const char* undefined_symbol);
-int semantic_calculate_edit_distance(const char* s1, const char* s2);
+int semantic_calculate_edit_distance(const char* s1,
+                     const char* s2);
 
 // ============================================================================
 // RECOVERY QUALITY ASSESSMENT

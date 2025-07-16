@@ -79,10 +79,14 @@ ASTNodeIdx_t ast_create_typed_node(ASTBuilder* builder, ASTNodeType type,
 /**
  * @brief Build a function declaration node
  */
-ASTNodeIdx_t ast_build_function_decl(ASTBuilder* builder, TokenIdx_t name_token,
-                                    TypeIdx_t return_type, ASTNodeIdx_t params) {
-    ASTNodeIdx_t node_idx = ast_create_typed_node(builder, AST_FUNCTION_DECL,
-                                                 name_token, return_type);
+ASTNodeIdx_t ast_build_function_decl(ASTBuilder* builder,
+                                     TokenIdx_t name_token,
+                                     TypeIdx_t return_type,
+                                     ASTNodeIdx_t params) {
+    ASTNodeIdx_t node_idx = ast_create_typed_node(builder,
+                                                  AST_FUNCTION_DECL,
+                                                  name_token,
+                                                  return_type);
     if (node_idx != 0) {
         HBNode* hb_node = HBGet(node_idx, HBMODE_AST);
         if (hb_node) {
@@ -136,9 +140,12 @@ ASTNodeIdx_t ast_build_var_decl(ASTBuilder* builder, TokenIdx_t name_token,
 /**
  * @brief Build a compound statement (block)
  */
-ASTNodeIdx_t ast_build_compound_stmt(ASTBuilder* builder, TokenIdx_t brace_token,
-                                    ASTNodeIdx_t statements) {
-    ASTNodeIdx_t node_idx = ast_create_node(builder, AST_STMT_COMPOUND, brace_token);
+ASTNodeIdx_t ast_build_compound_stmt(ASTBuilder* builder,
+                                     TokenIdx_t brace_token,
+                                     ASTNodeIdx_t statements) {
+    ASTNodeIdx_t node_idx = ast_create_node(builder,
+                                            AST_STMT_COMPOUND,
+                                            brace_token);
     if (node_idx != 0) {
         HBNode* hb_node = HBGet(node_idx, HBMODE_AST);
         if (hb_node) {

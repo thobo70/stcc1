@@ -28,39 +28,62 @@ typedef struct TACBuilder {
 } TACBuilder;
 
 // TAC builder initialization and cleanup
-int tac_builder_init(TACBuilder* builder, const char* tac_filename);
+int tac_builder_init(TACBuilder* builder,
+                     const char* tac_filename);
 void tac_builder_cleanup(TACBuilder* builder);
 
 // Core translation functions
-TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node);
-TACIdx_t tac_emit_instruction(TACBuilder* builder, TACOpcode op, 
-                             TACOperand result, TACOperand op1, TACOperand op2);
+TACOperand tac_build_from_ast(TACBuilder* builder,
+                     ASTNodeIdx_t node);
+TACIdx_t tac_emit_instruction(TACBuilder* builder,
+                     TACOpcode op,
+                             TACOperand result,
+                     TACOperand op1,
+                     TACOperand op2);
 
 // Operand creation helpers
-TACOperand tac_new_temp(TACBuilder* builder, TypeIdx_t type);
+TACOperand tac_new_temp(TACBuilder* builder,
+                     TypeIdx_t type);
 TACOperand tac_new_label(TACBuilder* builder);
-TACOperand tac_make_variable(uint16_t var_id, uint8_t scope);
+TACOperand tac_make_variable(uint16_t var_id,
+                     uint8_t scope);
 TACOperand tac_make_immediate_int(int32_t value);
 TACOperand tac_make_label_ref(uint16_t label_id);
 
 // Instruction emission helpers
-TACIdx_t tac_emit_label(TACBuilder* builder, uint16_t label_id);
-TACIdx_t tac_emit_assign(TACBuilder* builder, TACOperand dest, TACOperand src);
-TACIdx_t tac_emit_binary_op(TACBuilder* builder, TACOpcode op, 
-                           TACOperand result, TACOperand left, TACOperand right);
-TACIdx_t tac_emit_unary_op(TACBuilder* builder, TACOpcode op,
-                          TACOperand result, TACOperand operand);
-TACIdx_t tac_emit_conditional_jump(TACBuilder* builder, TACOperand condition,
-                                  uint16_t label_id, int jump_if_false);
-TACIdx_t tac_emit_unconditional_jump(TACBuilder* builder, uint16_t label_id);
+TACIdx_t tac_emit_label(TACBuilder* builder,
+                     uint16_t label_id);
+TACIdx_t tac_emit_assign(TACBuilder* builder,
+                     TACOperand dest,
+                     TACOperand src);
+TACIdx_t tac_emit_binary_op(TACBuilder* builder,
+                     TACOpcode op,
+                           TACOperand result,
+                     TACOperand left,
+                     TACOperand right);
+TACIdx_t tac_emit_unary_op(TACBuilder* builder,
+                     TACOpcode op,
+                          TACOperand result,
+                     TACOperand operand);
+TACIdx_t tac_emit_conditional_jump(TACBuilder* builder,
+                     TACOperand condition,
+                                  uint16_t label_id,
+                     int jump_if_false);
+TACIdx_t tac_emit_unconditional_jump(TACBuilder* builder,
+                     uint16_t label_id);
 
 // Function handling
-TACIdx_t tac_emit_function_start(TACBuilder* builder, SymTabIdx_t func_symbol);
+TACIdx_t tac_emit_function_start(TACBuilder* builder,
+                     SymTabIdx_t func_symbol);
 TACIdx_t tac_emit_function_end(TACBuilder* builder);
-TACIdx_t tac_emit_call(TACBuilder* builder, TACOperand result, 
-                      TACOperand function, int param_count);
-TACIdx_t tac_emit_param(TACBuilder* builder, TACOperand param);
-TACIdx_t tac_emit_return(TACBuilder* builder, TACOperand value);
+TACIdx_t tac_emit_call(TACBuilder* builder,
+                     TACOperand result,
+                      TACOperand function,
+                     int param_count);
+TACIdx_t tac_emit_param(TACBuilder* builder,
+                     TACOperand param);
+TACIdx_t tac_emit_return(TACBuilder* builder,
+                     TACOperand value);
 
 // Utility functions
 TACOpcode token_to_tac_opcode(TokenID_t token_id);

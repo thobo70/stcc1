@@ -1,20 +1,4 @@
-# STCC1 Small C Com# Compiler flags for development
-CFLAGS = -g -Og -Wall -Wextra -Werror -Wformat=2 \
-         -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes \
-         -Wredundant-decls -Wundef -Wfloat-equal -std=c99 -D_GNU_SOURCE
-
-# Alternative flags for different development phases:
-# Debug build (slower but more thorough checking):
-# CFLAGS = -g -O0 -Wall -Wextra -Wpedantic -Werror -fsanitize=address -fsanitize=undefined -fstack-protector-strong -std=c99
-# 
-# Strict build (with pedantic and conversion warnings - may need code fixes):
-# CFLAGS = -g -Og -Wall -Wextra -Wpedantic -Werror -Wformat=2 -Wconversion -Wsign-conversion -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wundef -Wfloat-equal -std=c99 -D_GNU_SOURCE
-#
-# Release build (optimized):
-# CFLAGS = -O2 -DNDEBUG -Wall -Wextra -std=c99
-# 
-# Permissive build (for fixing warnings gradually):
-# CFLAGS = -g -Og -Wall -Wextra -std=c99red Source Organization
+# STCC1 Small C Compiler Build System
 # Project directories
 SRCDIR = src
 LEXER_SRC = $(SRCDIR)/lexer

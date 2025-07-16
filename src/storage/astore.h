@@ -17,7 +17,8 @@
  * @brief Initialize the abstract syntax tree store.
  *
  * @param filename The name of the file to store the AST.
- * @return int 0 on success, non-zero on failure.
+ * @return int 0 on success,
+                     non-zero on failure.
  */
 int astore_init(const char *filename);
 
@@ -25,7 +26,8 @@ int astore_init(const char *filename);
  * @brief Open an existing abstract syntax tree store file.
  *
  * @param filename The name of the file to open.
- * @return int 0 on success, non-zero on failure.
+ * @return int 0 on success,
+                     non-zero on failure.
  */
 int astore_open(const char *filename);
 
@@ -40,7 +42,8 @@ void astore_close(void);
  * @brief Add a node to the abstract syntax tree store.
  *
  * @param node The node to add.
- * @return ASTNodeID_t The ID of the added node, or 0 on failure.
+ * @return ASTNodeID_t The ID of the added node,
+                     or 0 on failure.
  */
 ASTNodeIdx_t astore_add(ASTNode *node);
 
@@ -49,9 +52,11 @@ ASTNodeIdx_t astore_add(ASTNode *node);
  *
  * @param idx The ID of the node to update.
  * @param node The updated node.
- * @return ASTNodeID_t The ID of the updated node, or 0 on failure.
+ * @return ASTNodeID_t The ID of the updated node,
+                     or 0 on failure.
  */
-ASTNodeIdx_t astore_update(ASTNodeIdx_t idx, ASTNode *node);
+ASTNodeIdx_t astore_update(ASTNodeIdx_t idx,
+                     ASTNode *node);
 
 /**
  * @brief Get a node from the abstract syntax tree store by ID.
@@ -65,7 +70,8 @@ ASTNode astore_get(ASTNodeIdx_t idx);
  * @brief Set the current index in the abstract syntax tree store.
  *
  * @param idx The index to set.
- * @return int 0 on success, non-zero on failure.
+ * @return int 0 on success,
+                     non-zero on failure.
  */
 int astore_setidx(ASTNodeIdx_t idx);
 

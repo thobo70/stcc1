@@ -42,12 +42,16 @@ typedef struct {
 void lex_error_init(void);
 void lex_error_cleanup(void);
 
-void lex_error_invalid_char(TokenIdx_t token_idx, char invalid_char);
+void lex_error_invalid_char(TokenIdx_t token_idx,
+                     char invalid_char);
 void lex_error_unterminated_string(TokenIdx_t token_idx);
 void lex_error_unterminated_char(TokenIdx_t token_idx);
-void lex_error_invalid_escape(TokenIdx_t token_idx, char escape_char);
-void lex_error_invalid_number(TokenIdx_t token_idx, const char* number_text);
-void lex_error_identifier_too_long(TokenIdx_t token_idx, size_t length);
+void lex_error_invalid_escape(TokenIdx_t token_idx,
+                     char escape_char);
+void lex_error_invalid_number(TokenIdx_t token_idx,
+                     const char* number_text);
+void lex_error_identifier_too_long(TokenIdx_t token_idx,
+                     size_t length);
 
 // ============================================================================
 // SYNTAX ANALYSIS ERROR HANDLER
@@ -90,12 +94,17 @@ typedef enum {
 void syntax_error_init(void);
 void syntax_error_cleanup(void);
 
-void syntax_error_unexpected_token(TokenIdx_t token_idx, TokenID_t expected,
+void syntax_error_unexpected_token(TokenIdx_t token_idx,
+                     TokenID_t expected,
                                   TokenID_t found);
-void syntax_error_missing_token(TokenIdx_t token_idx, TokenID_t missing);
-void syntax_error_invalid_expression(TokenIdx_t token_idx, const char* context);
-void syntax_error_invalid_statement(TokenIdx_t token_idx, const char* context);
-void syntax_error_unmatched_delimiter(TokenIdx_t token_idx, char delimiter);
+void syntax_error_missing_token(TokenIdx_t token_idx,
+                     TokenID_t missing);
+void syntax_error_invalid_expression(TokenIdx_t token_idx,
+                     const char* context);
+void syntax_error_invalid_statement(TokenIdx_t token_idx,
+                     const char* context);
+void syntax_error_unmatched_delimiter(TokenIdx_t token_idx,
+                     char delimiter);
 
 // Error recovery
 RecoveryStrategy_t syntax_suggest_recovery(const SyntaxErrorContext_t* context);
@@ -132,16 +141,22 @@ typedef struct {
 void semantic_error_init(void);
 void semantic_error_cleanup(void);
 
-void semantic_error_undefined_symbol(TokenIdx_t token_idx, const char* symbol_name);
-void semantic_error_redefined_symbol(TokenIdx_t token_idx, const char* symbol_name,
+void semantic_error_undefined_symbol(TokenIdx_t token_idx,
+                     const char* symbol_name);
+void semantic_error_redefined_symbol(TokenIdx_t token_idx,
+                     const char* symbol_name,
                                     TokenIdx_t first_definition);
-void semantic_error_type_mismatch(TokenIdx_t token_idx, TypeIdx_t expected,
-                                 TypeIdx_t found, const char* context);
-void semantic_error_invalid_assignment(TokenIdx_t token_idx, TypeIdx_t lhs_type,
+void semantic_error_type_mismatch(TokenIdx_t token_idx,
+                     TypeIdx_t expected,
+                                 TypeIdx_t found,
+                     const char* context);
+void semantic_error_invalid_assignment(TokenIdx_t token_idx,
+                     TypeIdx_t lhs_type,
                                       TypeIdx_t rhs_type);
 void semantic_error_function_call_mismatch(TokenIdx_t token_idx,
                                           const char* function_name,
-                                          int expected_args, int found_args);
+                                          int expected_args,
+                     int found_args);
 
 // ============================================================================
 // CODE GENERATION ERROR HANDLER
@@ -169,10 +184,12 @@ typedef struct {
 void codegen_error_init(void);
 void codegen_error_cleanup(void);
 
-void codegen_error_unsupported_feature(ASTNodeIdx_t node_idx, const char* feature);
+void codegen_error_unsupported_feature(ASTNodeIdx_t node_idx,
+                     const char* feature);
 void codegen_error_register_spill(ASTNodeIdx_t node_idx);
 void codegen_error_invalid_target(const char* target);
-void codegen_error_assembly_error(ASTNodeIdx_t node_idx, const char* instruction);
+void codegen_error_assembly_error(ASTNodeIdx_t node_idx,
+                     const char* instruction);
 
 // ============================================================================
 // UNIFIED ERROR HANDLER INTERFACE
@@ -187,13 +204,17 @@ void error_set_current_stage(const char* stage_name);
 const char* error_get_current_stage(void);
 
 // Common error patterns across stages
-void error_report_with_context(ErrorLevel_t level, ErrorCategory_t category,
-                              TokenIdx_t token_idx, uint32_t error_code,
-                              const char* message, const char* suggestion,
+void error_report_with_context(ErrorLevel_t level,
+                     ErrorCategory_t category,
+                              TokenIdx_t token_idx,
+                     uint32_t error_code,
+                              const char* message,
+                     const char* suggestion,
                               void* stage_context);
 
 // Cross-stage error correlation
-void error_add_related_error(CompilerError_t* primary, CompilerError_t* related);
+void error_add_related_error(CompilerError_t* primary,
+                     CompilerError_t* related);
 void error_print_error_chain(const CompilerError_t* primary);
 
 #endif  // SRC_ERROR_ERROR_STAGES_H_

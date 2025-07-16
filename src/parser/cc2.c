@@ -16,7 +16,7 @@
  *
  * Pipeline: cc0 → cc1 → cc2
  * - cc0: C source → strings + tokens
- * - cc1: strings + tokens → AST + symbols  
+ * - cc1: strings + tokens → AST + symbols
  * - cc2: strings + tokens + AST + symbols → TAC
  */
 
@@ -49,25 +49,25 @@ static CC2State cc2_state = {0};
 
 /**
  * @brief Initialize CC2 compiler pass
- * 
+ *
  * @param tac_filename Output filename for TAC binary format
  * @param output_filename Output filename for human-readable TAC
  * @return 0 on success, -1 on error
  */
 static int cc2_init(const char* tac_filename, const char* output_filename) {
     memset(&cc2_state, 0, sizeof(CC2State));
-    
+
     // Initialize TAC builder
     if (!tac_builder_init(&cc2_state.tac_builder, tac_filename)) {
         fprintf(stderr, "Error: Cannot initialize TAC builder\n");
         return -1;
     }
-    
+
     // Store output filenames
     cc2_state.tac_filename = strdup(tac_filename);
     cc2_state.output_filename = strdup(output_filename);
     cc2_state.verbose = 1;
-    
+
     return 0;
 }
 
@@ -76,21 +76,21 @@ static int cc2_init(const char* tac_filename, const char* output_filename) {
  */
 static void cc2_cleanup(void) {
     tac_builder_cleanup(&cc2_state.tac_builder);
-    
+
     if (cc2_state.tac_filename) {
         free(cc2_state.tac_filename);
     }
     if (cc2_state.output_filename) {
         free(cc2_state.output_filename);
     }
-    
+
     memset(&cc2_state, 0, sizeof(CC2State));
 }
 
 
 /**
  * @brief Process AST node recursively
- * 
+ *
  * @param node_idx AST node index to process
  * @return 0 on success, -1 on error
  */
@@ -98,31 +98,31 @@ static void cc2_cleanup(void) {
 
 /**
  * @brief Traverse all AST nodes systematically
- * 
+ *
  * @return Number of nodes processed
  */
 static int cc2_process_all_ast_nodes(void) {
     int node_count = 0;
-    
+
     if (cc2_state.verbose) {
         printf("Traversing AST nodes systematically...\n");
     }
-    
+
     printf("DEBUG: Starting AST traversal...\n");
-    
+
     // Find the program root (should be AST_PROGRAM type)
     ASTNodeIdx_t program_root = 0;
     for (ASTNodeIdx_t idx = 1; idx <= 100; idx++) {
         ASTNode node = astore_get(idx);
         printf("DEBUG: Node %u has type %d\n", idx, node.type);
-        
+
         if (node.type == AST_PROGRAM) {
             program_root = idx;
             printf("DEBUG: Found program root at node %u\n", idx);
             break;
         }
     }
-    
+
     if (program_root != 0) {
         printf("DEBUG: Processing from program root\n");
         TACOperand result = tac_build_from_ast(&cc2_state.tac_builder, program_root);
@@ -133,7 +133,7 @@ static int cc2_process_all_ast_nodes(void) {
         // Fallback: process all valid nodes
         for (ASTNodeIdx_t idx = 1; idx <= 100; idx++) {
             ASTNode node = astore_get(idx);
-            
+
             if (node.type != AST_FREE) {
                 printf("DEBUG: Processing valid node %u (type %d)\n", idx, node.type);
                 TACOperand result = tac_build_from_ast(&cc2_state.tac_builder, idx);
@@ -142,64 +142,64 @@ static int cc2_process_all_ast_nodes(void) {
             }
         }
     }
-    
+
     printf("DEBUG: Total nodes processed: %d\n", node_count);
     return node_count;
 }
 
 /**
  * @brief Process the entire program and generate TAC
- * 
+ *
  * @return 0 on success, -1 on error
  */
 static int cc2_process_program(void) {
     if (cc2_state.verbose) {
         printf("=== TAC Generation Pass ===\n");
     }
-    
+
     // Process the AST systematically
     int node_count = cc2_process_all_ast_nodes();
-    
+
     if (cc2_state.verbose) {
         printf("Processed %d AST nodes\n", node_count);
     }
-    
+
     return 0;
 }
 
 /**
  * @brief Generate output files
- * 
+ *
  * @return 0 on success, -1 on error
  */
 static int cc2_generate_output(void) {
     if (cc2_state.verbose) {
         printf("\n=== Generating TAC Output ===\n");
     }
-    
+
     // Print statistics
     tac_print_statistics();
-    
+
     // Generate human-readable TAC file
     if (cc2_state.output_filename) {
         if (cc2_state.verbose) {
             printf("Writing human-readable TAC to: %s\n", cc2_state.output_filename);
         }
-        
+
         tac_write_to_file(cc2_state.output_filename);
     }
-    
+
     // TAC binary format is already written by tac_builder
     if (cc2_state.verbose) {
         printf("TAC binary format written to: %s\n", cc2_state.tac_filename);
     }
-    
+
     return 0;
 }
 
 /**
  * @brief Main compiler function for CC2
- * 
+ *
  * @param argc Number of command line arguments
  * @param argv Command line arguments: cc2 <sstorfile> <tokenfile> <astfile> <symfile> <tacfile> [output.tac]
  * @return 0 on success, non-zero on error
@@ -210,21 +210,21 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <sstorfile> <tokenfile> <astfile> <symfile> <tacfile> [output.tac]\n", argv[0]);
         fprintf(stderr, "\n");
         fprintf(stderr, "  sstorfile  - String store file (from cc0)\n");
-        fprintf(stderr, "  tokenfile  - Token store file (from cc0)\n");  
+        fprintf(stderr, "  tokenfile  - Token store file (from cc0)\n");
         fprintf(stderr, "  astfile    - AST store file (from cc1)\n");
         fprintf(stderr, "  symfile    - Symbol table file (from cc1)\n");
         fprintf(stderr, "  tacfile    - TAC binary output file\n");
         fprintf(stderr, "  output.tac - Human-readable TAC output (optional)\n");
         return 1;
     }
-    
+
     const char* sstore_file = argv[1];
     const char* token_file = argv[2];
     const char* ast_file = argv[3];
     const char* sym_file = argv[4];
     const char* tac_file = argv[5];
     const char* output_file = (argc >= 7) ? argv[6] : NULL;
-    
+
     printf("=== STCC1 Compiler - TAC Generation Pass (CC2) ===\n");
     printf("Input files:\n");
     printf("  String store: %s\n", sstore_file);
@@ -237,26 +237,26 @@ int main(int argc, char *argv[]) {
         printf("  TAC text:     %s\n", output_file);
     }
     printf("\n");
-    
+
     // Initialize storage systems (open existing files from cc0/cc1)
     if (sstore_open(sstore_file) != 0) {
         fprintf(stderr, "Error: Cannot open string store file %s\n", sstore_file);
         return 1;
     }
-    
+
     if (tstore_open(token_file) != 0) {
         fprintf(stderr, "Error: Cannot open token file %s\n", token_file);
         sstore_close();
         return 1;
     }
-    
+
     if (astore_open(ast_file) != 0) {
         fprintf(stderr, "Error: Cannot open AST file %s\n", ast_file);
         tstore_close();
         sstore_close();
         return 1;
     }
-    
+
     if (symtab_open(sym_file) != 0) {
         fprintf(stderr, "Error: Cannot open symbol table file %s\n", sym_file);
         astore_close();
@@ -264,7 +264,7 @@ int main(int argc, char *argv[]) {
         sstore_close();
         return 1;
     }
-    
+
     // Initialize CC2 compiler pass
     if (cc2_init(tac_file, output_file) != 0) {
         fprintf(stderr, "Error: Cannot initialize CC2 compiler pass\n");
@@ -274,33 +274,33 @@ int main(int argc, char *argv[]) {
         sstore_close();
         return 1;
     }
-    
+
     // Process the program and generate TAC
     int result = cc2_process_program();
-    
+
     if (result == 0) {
         // Generate output files
         result = cc2_generate_output();
     }
-    
+
     // Report results
     printf("\n=== CC2 Compilation Results ===\n");
     printf("Errors:   %d\n", cc2_state.errors);
     printf("Warnings: %d\n", cc2_state.warnings);
-    
+
     if (result == 0 && cc2_state.errors == 0) {
         printf("TAC generation completed successfully!\n");
     } else {
-        printf("TAC generation completed with %s\n", 
+        printf("TAC generation completed with %s\n",
                cc2_state.errors > 0 ? "errors" : "warnings");
     }
-    
+
     // Clean up
     cc2_cleanup();
     symtab_close();
     astore_close();
     tstore_close();
     sstore_close();
-    
+
     return (cc2_state.errors > 0) ? 1 : 0;
 }

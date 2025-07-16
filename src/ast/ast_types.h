@@ -145,12 +145,16 @@ typedef struct ASTNode {
     // Child nodes - flexible organization (14 bytes remaining)
     union {
         struct {
-            ASTNodeIdx_t child1, child2, child3, child4;  // 8 bytes
+            ASTNodeIdx_t child1,
+                     child2,
+                     child3,
+                     child4;  // 8 bytes
             char padding[6];                              // 6 bytes
         } children;
 
         struct {
-            ASTNodeIdx_t left, right;                     // 4 bytes
+            ASTNodeIdx_t left,
+                     right;                     // 4 bytes
             union {
                 SymTabIdx_t symbol_idx;                   // Symbol reference
                 sstore_pos_t string_pos;                  // String literal position
@@ -210,7 +214,9 @@ typedef struct ASTNode {
 // _Static_assert(sizeof(ASTNode) == 24, "ASTNode must be exactly 24 bytes");
 
 /**
- * @brief AST node list for chaining (e.g., statement lists, parameter lists)
+ * @brief AST node list for chaining (e.g.,
+                     statement lists,
+                     parameter lists)
  */
 typedef struct ASTNodeList {
     ASTNodeIdx_t node;

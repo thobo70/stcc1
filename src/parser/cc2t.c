@@ -51,14 +51,14 @@ static void show_usage(const char* program_name) {
 static void show_tac_header(const char* filename) {
     printf("=== TAC File Analysis ===\n");
     printf("File: %s\n", filename);
-    
+
     // Get file size
     FILE* fp = fopen(filename, "rb");
     if (fp) {
         fseek(fp, 0, SEEK_END);
         long file_size = ftell(fp);
         fclose(fp);
-        
+
         printf("Size: %ld bytes\n", file_size);
         printf("Instructions: %ld\n", file_size / sizeof(TACInstruction));
     }
@@ -70,38 +70,38 @@ static void show_tac_header(const char* filename) {
  */
 static void show_detailed_analysis(void) {
     printf("\n=== Detailed TAC Analysis ===\n");
-    
+
     // Get total instruction count
     TACIdx_t total_instructions = tacstore_getidx();
-    
+
     if (total_instructions == 0) {
         printf("No TAC instructions found.\n");
         return;
     }
-    
+
     printf("Analyzing %u instructions...\n\n", total_instructions);
-    
+
     // Analyze instruction patterns
     int label_count = 0;
     int jump_count = 0;
     int arithmetic_count = 0;
     int assignment_count = 0;
     int function_count = 0;
-    
+
     for (TACIdx_t i = 1; i <= total_instructions; i++) {
         TACInstruction instr = tacstore_get(i);
-        
+
         switch (instr.opcode) {
             case TAC_LABEL:
                 label_count++;
                 break;
-                
+
             case TAC_GOTO:
             case TAC_IF_FALSE:
             case TAC_IF_TRUE:
                 jump_count++;
                 break;
-                
+
             case TAC_ADD:
             case TAC_SUB:
             case TAC_MUL:
@@ -114,32 +114,32 @@ static void show_detailed_analysis(void) {
             case TAC_SHR:
                 arithmetic_count++;
                 break;
-                
+
             case TAC_ASSIGN:
             case TAC_LOAD:
             case TAC_STORE:
                 assignment_count++;
                 break;
-                
+
             case TAC_CALL:
             case TAC_PARAM:
             case TAC_RETURN:
             case TAC_RETURN_VOID:
                 function_count++;
                 break;
-                
+
             default:
                 break;
         }
     }
-    
+
     printf("Instruction Categories:\n");
     printf("  Labels:     %d\n", label_count);
     printf("  Jumps:      %d\n", jump_count);
     printf("  Arithmetic: %d\n", arithmetic_count);
     printf("  Assignment: %d\n", assignment_count);
     printf("  Functions:  %d\n", function_count);
-    printf("  Other:      %d\n", total_instructions - label_count - jump_count - 
+    printf("  Other:      %d\n", total_instructions - label_count - jump_count -
            arithmetic_count - assignment_count - function_count);
 }
 
@@ -148,41 +148,41 @@ static void show_detailed_analysis(void) {
  */
 static void analyze_control_flow(void) {
     printf("\n=== Control Flow Analysis ===\n");
-    
+
     TACIdx_t total_instructions = tacstore_getidx();
-    
+
     if (total_instructions == 0) {
         printf("No instructions to analyze.\n");
         return;
     }
-    
+
     int basic_blocks = 0;
     int branches = 0;
     bool in_block = false;
-    
+
     for (TACIdx_t i = 1; i <= total_instructions; i++) {
         TACInstruction instr = tacstore_get(i);
-        
+
         // Count basic block starts (labels or first instruction)
         if (instr.opcode == TAC_LABEL || (!in_block && i == 1)) {
             basic_blocks++;
             in_block = true;
         }
-        
+
         // Count branches
-        if (instr.opcode == TAC_GOTO || instr.opcode == TAC_IF_FALSE || 
-            instr.opcode == TAC_IF_TRUE || instr.opcode == TAC_RETURN || 
+        if (instr.opcode == TAC_GOTO || instr.opcode == TAC_IF_FALSE ||
+            instr.opcode == TAC_IF_TRUE || instr.opcode == TAC_RETURN ||
             instr.opcode == TAC_RETURN_VOID) {
             branches++;
             in_block = false;
         }
     }
-    
+
     printf("Basic blocks: %d (estimated)\n", basic_blocks);
     printf("Branches:     %d\n", branches);
-    
+
     if (basic_blocks > 0) {
-        printf("Average instructions per block: %.1f\n", 
+        printf("Average instructions per block: %.1f\n",
                (float)total_instructions / basic_blocks);
     }
 }
@@ -192,38 +192,38 @@ static void analyze_control_flow(void) {
  */
 static void show_optimization_flags(void) {
     printf("\n=== Optimization Flags Analysis ===\n");
-    
+
     TACIdx_t total_instructions = tacstore_getidx();
-    
+
     if (total_instructions == 0) {
         printf("No instructions to analyze.\n");
         return;
     }
-    
+
     int dead_code = 0;
     int const_fold = 0;
     int cse = 0;
     int copy_prop = 0;
     int optimized = 0;
-    
+
     for (TACIdx_t i = 1; i <= total_instructions; i++) {
         TACInstruction instr = tacstore_get(i);
-        
+
         if (instr.flags & TAC_FLAG_DEAD_CODE) dead_code++;
         if (instr.flags & TAC_FLAG_CONST_FOLD) const_fold++;
         if (instr.flags & TAC_FLAG_CSE) cse++;
         if (instr.flags & TAC_FLAG_COPY_PROP) copy_prop++;
         if (instr.flags & TAC_FLAG_OPTIMIZED) optimized++;
     }
-    
+
     printf("Dead code candidates:      %d\n", dead_code);
     printf("Constant folding applied:  %d\n", const_fold);
     printf("CSE opportunities:         %d\n", cse);
     printf("Copy propagation applied:  %d\n", copy_prop);
     printf("Optimization complete:     %d\n", optimized);
-    
+
     if (total_instructions > 0) {
-        printf("Optimization coverage:     %.1f%%\n", 
+        printf("Optimization coverage:     %.1f%%\n",
                (float)optimized * 100.0f / total_instructions);
     }
 }
@@ -236,42 +236,42 @@ int main(int argc, char* argv[]) {
         show_usage(argv[0]);
         return 1;
     }
-    
+
     const char* tac_file = argv[1];
-    
+
     printf("=== STCC1 TAC Inspection Tool (CC2T) ===\n");
     printf("Analyzing TAC file: %s\n\n", tac_file);
-    
+
     // Show file information
     show_tac_header(tac_file);
-    
+
     // Open TAC store for reading
     if (tacstore_open(tac_file) != 1) {
         fprintf(stderr, "Error: Cannot open TAC file %s\n", tac_file);
         return 1;
     }
-    
+
     // Display all TAC instructions
     printf("=== TAC Instructions ===\n");
     tac_print_all_instructions();
-    
+
     // Display standard statistics
     printf("\n");
     tac_print_statistics();
-    
+
     // Display operand usage analysis
     printf("\n");
     tac_analyze_operand_usage();
-    
+
     // Show detailed analysis
     show_detailed_analysis();
-    
+
     // Analyze control flow
     analyze_control_flow();
-    
+
     // Show optimization flags
     show_optimization_flags();
-    
+
     // Store validation
     printf("\n=== TAC Store Validation ===\n");
     if (tacstore_validate()) {
@@ -279,15 +279,15 @@ int main(int argc, char* argv[]) {
     } else {
         printf("⚠ TAC store validation warnings detected\n");
     }
-    
+
     // Display store statistics
     printf("\n");
     tacstore_print_stats();
-    
+
     printf("\n=== CC2T Analysis Complete ===\n");
-    
+
     // Clean up
     tacstore_close();
-    
+
     return 0;
 }

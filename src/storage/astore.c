@@ -25,7 +25,7 @@ ASTNodeIdx_t astlastidx = 0;
 
 int astore_init(const char *filename) {
     astfile = filename;
-    fpast = fopen(astfile, "wb");
+    fpast = fopen(astfile, "w+b");
     if (fpast == NULL) {
         perror(astfile);
         return 1;  // Indicate failure
@@ -42,8 +42,20 @@ int astore_open(const char *filename) {
         perror(astfile);
         return 1;  // Indicate failure
     }
-    fseek(fpast, 0, SEEK_END);
-    astlastidx = ftell(fpast) / sizeof(ASTNode);
+    if (fseek(fpast, 0, SEEK_END) != 0) {
+        perror(astfile);
+        fclose(fpast);
+        fpast = NULL;
+        return 1;  // Indicate failure
+    }
+    long pos = ftell(fpast);
+    if (pos < 0) {
+        perror(astfile);
+        fclose(fpast);
+        fpast = NULL;
+        return 1;  // Indicate failure
+    }
+    astlastidx = pos / sizeof(ASTNode);
     return 0;  // Indicate success
 }
 
@@ -64,12 +76,21 @@ ASTNodeIdx_t astore_add(ASTNode *node) {
     if (node == NULL) {
         node = &empty;
     }
-    fseek(fpast, 0, SEEK_END);
-    ASTNodeIdx_t idx = ftell(fpast) / sizeof(ASTNode);
+    if (fseek(fpast, 0, SEEK_END) != 0) {
+        perror(astfile);
+        return 0;  // Indicate failure
+    }
+    long pos = ftell(fpast);
+    if (pos < 0) {
+        perror(astfile);
+        return 0;  // Indicate failure
+    }
+    ASTNodeIdx_t idx = pos / sizeof(ASTNode);
     if (fwrite(node, sizeof(ASTNode), 1, fpast) != 1) {
         perror(astfile);
         return 0;  // Indicate failure
     }
+    fflush(fpast);  // Ensure data is written to disk
     return idx;  // Indicate success by returning the ID
 }
 
@@ -77,7 +98,10 @@ ASTNodeIdx_t astore_update(ASTNodeIdx_t idx, ASTNode *node) {
     if (fpast == NULL) {
         return 0;  // Indicate failure
     }
-    fseek(fpast, idx * sizeof(ASTNode), SEEK_SET);
+    if (fseek(fpast, idx * sizeof(ASTNode), SEEK_SET) != 0) {
+        perror(astfile);
+        return 0;  // Indicate failure
+    }
     if (fwrite(node, sizeof(ASTNode), 1, fpast) != 1) {
         perror(astfile);
         return 0;  // Indicate failure
@@ -90,7 +114,10 @@ ASTNode astore_get(ASTNodeIdx_t idx) {
     if (fpast == NULL) {
         return node;
     }
-    fseek(fpast, idx * sizeof(ASTNode), SEEK_SET);
+    if (fseek(fpast, idx * sizeof(ASTNode), SEEK_SET) != 0) {
+        perror(astfile);
+        return node;  // Return empty node on error
+    }
     if (fread(&node, sizeof(ASTNode), 1, fpast) != 1) {
         perror(astfile);
     }

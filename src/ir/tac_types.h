@@ -44,21 +44,21 @@ typedef struct TACOperand {
             uint16_t id;     // Variable/temporary ID
             uint8_t scope;   // Scope level (for locals)
         } variable;
-        
+
         struct {
             int32_t value;   // Immediate integer value
         } immediate;
-        
+
         struct {
             uint16_t offset; // Jump target offset
             uint8_t padding;
         } label;
-        
+
         struct {
             uint16_t func_id; // Function identifier
             uint8_t padding;
         } function;
-        
+
         uint32_t raw;        // Raw 32-bit access
     } data;
 } TACOperand;
@@ -69,26 +69,26 @@ typedef struct TACOperand {
 typedef enum TACOpcode {
     // Special operations
     TAC_NOP = 0x00,          // No operation
-    
+
     // Binary arithmetic (result = op1 OP op2)
     TAC_ADD = 0x10,          // result = operand1 + operand2
-    TAC_SUB,                 // result = operand1 - operand2  
+    TAC_SUB,                 // result = operand1 - operand2
     TAC_MUL,                 // result = operand1 * operand2
     TAC_DIV,                 // result = operand1 / operand2
     TAC_MOD,                 // result = operand1 % operand2
-    
+
     // Unary arithmetic (result = OP op1)
     TAC_NEG,                 // result = -operand1
     TAC_NOT,                 // result = !operand1
     TAC_BITWISE_NOT,         // result = ~operand1
-    
+
     // Bitwise operations
     TAC_AND,                 // result = operand1 & operand2
     TAC_OR,                  // result = operand1 | operand2
     TAC_XOR,                 // result = operand1 ^ operand2
     TAC_SHL,                 // result = operand1 << operand2
     TAC_SHR,                 // result = operand1 >> operand2
-    
+
     // Comparison operations (result = op1 REL op2)
     TAC_EQ = 0x20,           // result = operand1 == operand2
     TAC_NE,                  // result = operand1 != operand2
@@ -96,34 +96,34 @@ typedef enum TACOpcode {
     TAC_LE,                  // result = operand1 <= operand2
     TAC_GT,                  // result = operand1 > operand2
     TAC_GE,                  // result = operand1 >= operand2
-    
+
     // Logical operations
     TAC_LOGICAL_AND,         // result = operand1 && operand2
     TAC_LOGICAL_OR,          // result = operand1 || operand2
-    
+
     // Assignment operations
     TAC_ASSIGN = 0x30,       // result = operand1
     TAC_LOAD,                // result = *operand1 (indirect load)
     TAC_STORE,               // *result = operand1 (indirect store)
     TAC_ADDR,                // result = &operand1 (address of)
-    
-    // Array and struct operations  
+
+    // Array and struct operations
     TAC_INDEX,               // result = operand1[operand2]
     TAC_MEMBER,              // result = operand1.field
     TAC_MEMBER_PTR,          // result = operand1->field
-    
+
     // Control flow
     TAC_LABEL = 0x40,        // Label definition (no operands)
     TAC_GOTO,                // goto operand1 (unconditional jump)
     TAC_IF_FALSE,            // if (!operand1) goto operand2
     TAC_IF_TRUE,             // if (operand1) goto operand2
-    
+
     // Function operations
     TAC_CALL = 0x50,         // result = call operand1(params...)
     TAC_PARAM,               // Push parameter operand1
     TAC_RETURN,              // return operand1
     TAC_RETURN_VOID,         // return (no value)
-    
+
     // Special operations
     TAC_CAST = 0x60,         // result = (type)operand1
     TAC_SIZEOF,              // result = sizeof(operand1)
@@ -151,9 +151,9 @@ typedef enum TACFlags {
 typedef struct TACInstruction {
     TACOpcode opcode;        // 2 bytes - operation type
     TACFlags flags;          // 2 bytes - optimization flags
-    
+
     TACOperand result;       // 4 bytes - destination operand
-    TACOperand operand1;     // 4 bytes - first source operand  
+    TACOperand operand1;     // 4 bytes - first source operand
     TACOperand operand2;     // 4 bytes - second source operand
 } TACInstruction;
 

@@ -13,7 +13,8 @@
 
 typedef unsigned long hash_t;  // NOLINT
 
-hash_t hash(const char *str, unsigned int length);
+hash_t hash(const char *str,
+                     unsigned int length);
 
 
 #endif  // _HASH_H  // NOLINT

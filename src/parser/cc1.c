@@ -1,20 +1,16 @@
 /**
  * @file cc1.c
  * @brief Enhanced C parser with AST generation and symbol table management
- * @author Thomas Boos (            ASTNodeIdx_t node_idx = create_ast_node(AST_EXPR_IDENTIFIE        ASTNodeIdx_t op_node = create_ast_node(AST_OPERATOR, token_idx);
-        if (op_node) {
-            HBNode* node = HBGet(op_node, HBMODE_AST);
-            node->ast.o1 = left;
-            node->ast.o2 = right;
-        }en_idx);
-            if (node_idx) {
-                // Note: New AST system handles node data internally
-            }70@gmail.com)
+ * @author Thomas Boos (tboos70@gmail.com)
  * @version 0.3
  * @date 2025-07-16
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  *
- * @details Enhanced parser that processes tokens from cc0 and generates:
+ * This file implements the main parser component of the STCC1 compiler.
+ * It handles parsing of tokens into an Abstract Syntax Tree (AST) and
+ * manages symbol table creation during the parsing process.
+ *
+ * Enhanced parser that processes tokens from cc0 and generates:
  * - Complete Abstract Syntax Tree (AST) stored in astore
  * - Symbol table with proper scoping stored in symtab
  * - Integrated error handling with detailed diagnostics
@@ -675,7 +671,7 @@ int main(int argc, char *argv[]) {
             ast_node.call = hb_node->ast.call;
             ast_node.token_idx = hb_node->ast.token_idx;
             ast_node.type_idx = hb_node->ast.type_idx;
-            
+
             ASTNodeIdx_t result = astore_add(&ast_node);
             if (result != 0) {
                 transferred++;

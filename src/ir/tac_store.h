@@ -29,7 +29,8 @@ int tacstore_open(const char* filename);
 void tacstore_close(void);
 TACIdx_t tacstore_add(const TACInstruction* instr);
 TACInstruction tacstore_get(TACIdx_t idx);
-TACIdx_t tacstore_update(TACIdx_t idx, const TACInstruction* instr);
+TACIdx_t tacstore_update(TACIdx_t idx,
+                     const TACInstruction* instr);
 TACIdx_t tacstore_getidx(void);
 void tacstore_rewind(void);
 

@@ -18,7 +18,8 @@
  * @brief Initialize the token store.
  *
  * @param filename The name of the file to store tokens.
- * @return int 0 on success, non-zero on failure.
+ * @return int 0 on success,
+                     non-zero on failure.
  */
 int tstore_init(const char *filename);
 
@@ -26,7 +27,8 @@ int tstore_init(const char *filename);
  * @brief Open an existing token store file.
  *
  * @param filename The name of the file to open.
- * @return int 0 on success, non-zero on failure.
+ * @return int 0 on success,
+                     non-zero on failure.
  */
 int tstore_open(const char *filename);
 
@@ -41,7 +43,8 @@ void tstore_close(void);
  * @brief Add a token to the store.
  *
  * @param token The token to add.
- * @return TokenIdx_t The index of the added token, or 0 on failure.
+ * @return TokenIdx_t The index of the added token,
+                     or 0 on failure.
  */
 TokenIdx_t tstore_add(Token_t *token);
 
@@ -64,7 +67,8 @@ Token_t tstore_next(void);
  * @brief Set the current index in the token store.
  *
  * @param idx The index to set.
- * @return int 0 on success, non-zero on failure.
+ * @return int 0 on success,
+                     non-zero on failure.
  */
 int tstore_setidx(TokenIdx_t idx);
 

@@ -60,8 +60,12 @@
 
 // Memory allocation wrappers for tracking
 #ifdef ENABLE_MEMORY_TRACKING
-void* tracked_malloc(size_t size, const char* file, int line);
-void tracked_free(void* ptr, const char* file, int line);
+void* tracked_malloc(size_t size,
+                     const char* file,
+                     int line);
+void tracked_free(void* ptr,
+                     const char* file,
+                     int line);
 void print_memory_usage(void);
 
 #define MALLOC(size) tracked_malloc(size, __FILE__, __LINE__)
