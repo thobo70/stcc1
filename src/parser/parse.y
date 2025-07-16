@@ -104,7 +104,7 @@
 
 %type <intval> translation_unit external_declaration function_definition declaration
 %type <intval> declaration_list declaration_specifiers init_declarator_list init_declarator
-%type <intval> type_specifier struct_or_union_specifier struct_declaration_list
+%type <intval> type_specifier type_specifier_seq struct_or_union_specifier struct_declaration_list
 %type <intval> struct_declaration specifier_qualifier_list struct_declarator_list
 %type <intval> struct_declarator enum_specifier enumerator_list enumerator
 %type <intval> declarator direct_declarator pointer type_qualifier_list
@@ -152,6 +152,8 @@ declaration_list
 declaration_specifiers
     : storage_class_specifier declaration_specifiers
     | storage_class_specifier
+    | type_specifier_seq declaration_specifiers
+    | type_specifier_seq
     | type_specifier declaration_specifiers
     | type_specifier
     | type_qualifier declaration_specifiers
@@ -200,9 +202,16 @@ type_specifier
     | T_DOUBLE
     | T_CHAR
     | T_VOID
+    | T_SIGNED
+    | T_UNSIGNED
     | struct_or_union_specifier
     | enum_specifier
     | T_ID
+    ;
+
+type_specifier_seq
+    : type_specifier
+    | type_specifier_seq type_specifier
     ;
 
 struct_or_union_specifier
@@ -224,7 +233,9 @@ struct_declaration
     ;
 
 specifier_qualifier_list
-    : type_specifier specifier_qualifier_list
+    : type_specifier_seq specifier_qualifier_list
+    | type_specifier_seq
+    | type_specifier specifier_qualifier_list
     | type_specifier
     | type_qualifier specifier_qualifier_list
     | type_qualifier

@@ -27,9 +27,20 @@
 
 #include "../storage/sstore.h"
 #include "../storage/tstore.h"
+#include "../storage/astore.h"
+#include "../storage/symtab.h"
 #include "../utils/hmapbuf.h"
 #include "../error/error_core.h"
 // Enhanced cc1 with error handling and core AST capabilities
+
+// Type specifier information for complex type parsing
+typedef struct {
+    int has_signed;      // -1 = signed, 0 = not specified, 1 = unsigned
+    int has_long;        // 0 = not specified, 1 = long, 2 = long long
+    int has_short;       // 0 = not specified, 1 = short
+    int base_type;       // T_INT, T_CHAR, T_FLOAT, T_DOUBLE, T_VOID, or 0 for unspecified
+    int is_valid;        // 1 if valid combination, 0 otherwise
+} TypeSpecifier_t;
 
 // Enhanced parser state for tracking context
 typedef struct {
@@ -43,6 +54,8 @@ typedef struct {
 static ParserState_t parser_state = {0};
 
 // Forward declarations
+static TypeSpecifier_t parse_type_specifiers(void);
+static int is_type_specifier_start(TokenID_t token_id);
 ASTNodeIdx_t parse_program(void);
 ASTNodeIdx_t parse_declaration(void);
 ASTNodeIdx_t parse_function_definition(void);
@@ -305,79 +318,90 @@ ASTNodeIdx_t parse_declaration(void) {
     Token_t token = peek_token();
     TokenIdx_t token_idx = tstore_getidx();
     
-    // Handle storage class specifiers and type specifiers
-    if (token.id == T_INT || token.id == T_CHAR || token.id == T_FLOAT || 
-        token.id == T_DOUBLE || token.id == T_VOID || token.id == T_LONG ||
-        token.id == T_SHORT || token.id == T_UNSIGNED || token.id == T_SIGNED) {
-        
-        next_token(); // consume type
-        
-        Token_t id_token = peek_token();
-        if (id_token.id != T_ID) {
-            SourceLocation_t location = error_create_location(tstore_getidx());
-            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
-                             "Missing identifier", "Expected identifier after type", "parser", NULL);
-            return 0;
-        }
-        
-        next_token(); // consume identifier
-        const char* name = sstore_get(id_token.pos);
-        
-        // Check if this is a function definition
-        if (peek_token().id == T_LPAREN) {
-            // Function definition
-            parser_state.in_function = 1;
-            add_symbol(name, SYM_FUNCTION, tstore_getidx());
-            
-            next_token(); // consume '('
-            // TODO: Parse parameters
-            expect_token(T_RPAREN);
-            
-            if (peek_token().id == T_LBRACE) {
-                // Function definition with body
-                ASTNodeIdx_t body = parse_statement();
-                ASTNodeIdx_t func_node = create_ast_node(AST_FUNCTION, token_idx);
-                if (func_node) {
-                    HBNode *node = HBGet(func_node, HBMODE_AST);
-                    node->ast.o1 = id_token.pos; // Function name
-                    node->ast.o2 = body;
-                }
-                parser_state.in_function = 0;
-                return func_node;
-            } else {
-                // Function declaration only
-                expect_token(T_SEMICOLON);
-                return create_ast_node(AST_DECLARATION, token_idx);
-            }
-        } else {
-            // Variable declaration
-            add_symbol(name, SYM_VARIABLE, tstore_getidx());
-            
-            // Handle optional initializer
-            if (peek_token().id == T_ASSIGN) {
-                next_token(); // consume '='
-                ASTNodeIdx_t init_expr = parse_expression();
-                ASTNodeIdx_t decl_node = create_ast_node(AST_DECLARATION, token_idx);
-                if (decl_node) {
-                    HBNode *node = HBGet(decl_node, HBMODE_AST);
-                    node->ast.o1 = id_token.pos; // Variable name
-                    node->ast.o2 = init_expr;
-                }
-                expect_token(T_SEMICOLON);
-                return decl_node;
-            } else {
-                expect_token(T_SEMICOLON);
-                ASTNodeIdx_t decl_node = create_ast_node(AST_DECLARATION, token_idx);
-                if (decl_node) {
-                    HBNode *node = HBGet(decl_node, HBMODE_AST);
-                    node->ast.o1 = id_token.pos; // Variable name
-                }
-                return decl_node;
-            }
-        }
+    // Check if this starts with a type specifier or storage class
+    if (!is_type_specifier_start(token.id)) {
+        return 0;  // Not a declaration
     }
     
-    return 0;
+    // Parse complex type specifiers
+    TypeSpecifier_t type_spec = parse_type_specifiers();
+    if (!type_spec.is_valid) {
+        SourceLocation_t location = error_create_location(tstore_getidx());
+        error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                         "Invalid type specifier combination", "Check type syntax", "parser", NULL);
+        return 0;
+    }
+    
+    // Now expect an identifier (unless this is a struct/union/enum declaration)
+    Token_t id_token = peek_token();
+    if (id_token.id != T_ID) {
+        // Handle cases like "struct { ... }" or bare type declarations
+        if (peek_token().id == T_SEMICOLON) {
+            next_token();  // consume semicolon
+            return create_ast_node(AST_DECLARATION, token_idx);
+        }
+        
+        SourceLocation_t location = error_create_location(tstore_getidx());
+        error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                         "Missing identifier", "Expected identifier after type", "parser", NULL);
+        return 0;
+    }
+    
+    next_token();  // consume identifier
+    const char* name = sstore_get(id_token.pos);
+    
+    // Check if this is a function definition
+    if (peek_token().id == T_LPAREN) {
+        // Function definition
+        parser_state.in_function = 1;
+        add_symbol(name, SYM_FUNCTION, tstore_getidx());
+        
+        next_token();  // consume '('
+        // TODO: Parse parameters
+        expect_token(T_RPAREN);
+        
+        if (peek_token().id == T_LBRACE) {
+            // Function definition with body
+            ASTNodeIdx_t body = parse_statement();
+            ASTNodeIdx_t func_node = create_ast_node(AST_FUNCTION, token_idx);
+            if (func_node) {
+                HBNode *node = HBGet(func_node, HBMODE_AST);
+                node->ast.o1 = id_token.pos;  // Function name
+                node->ast.o2 = body;
+            }
+            parser_state.in_function = 0;
+            return func_node;
+        } else {
+            // Function declaration only
+            expect_token(T_SEMICOLON);
+            return create_ast_node(AST_DECLARATION, token_idx);
+        }
+    } else {
+        // Variable declaration
+        add_symbol(name, SYM_VARIABLE, tstore_getidx());
+        
+        // Handle optional initializer
+        if (peek_token().id == T_ASSIGN) {
+            next_token();  // consume '='
+            ASTNodeIdx_t init_expr = parse_expression();
+            ASTNodeIdx_t decl_node = create_ast_node(AST_DECLARATION, token_idx);
+            if (decl_node) {
+                HBNode *node = HBGet(decl_node, HBMODE_AST);
+                node->ast.o1 = id_token.pos;  // Variable name
+                node->ast.o2 = init_expr;
+            }
+            expect_token(T_SEMICOLON);
+            return decl_node;
+        } else {
+            expect_token(T_SEMICOLON);
+            ASTNodeIdx_t decl_node = create_ast_node(AST_DECLARATION, token_idx);
+            if (decl_node) {
+                HBNode *node = HBGet(decl_node, HBMODE_AST);
+                node->ast.o1 = id_token.pos;  // Variable name
+            }
+            return decl_node;
+        }
+    }
 }
 
 /**
@@ -421,6 +445,9 @@ ASTNodeIdx_t parse_program(void) {
  * @brief Initialize parser with error handling
  */
 void parser_init(void) {
+    // Initialize hash map buffer for AST nodes
+    HBInit();
+    
     // Initialize error handling
     ErrorConfig_t config = {
         .max_errors = 50,
@@ -454,21 +481,141 @@ void parser_cleanup(void) {
 }
 
 /**
- * @brief Main parser entry point
+ * @brief Parse complex type specifiers (handles "unsigned long int", "signed short int", etc.)
+ * @return Type information encoded as a composite value, or 0 on error
+ */
+static TypeSpecifier_t parse_type_specifiers(void) {
+    TypeSpecifier_t type = {0, 0, 0, 0, 1}; // Initialize as valid
+    Token_t token;
+    int tokens_consumed = 0;
+    
+    // Keep parsing type specifier tokens
+    while (1) {
+        token = peek_token();
+        int advance = 0;
+        
+        switch (token.id) {
+            case T_UNSIGNED:
+                if (type.has_signed != 0) {
+                    type.is_valid = 0; // Cannot have both signed and unsigned
+                    return type;
+                }
+                type.has_signed = 1;
+                advance = 1;
+                break;
+                
+            case T_SIGNED:
+                if (type.has_signed != 0) {
+                    type.is_valid = 0; // Cannot have both signed and unsigned
+                    return type;
+                }
+                type.has_signed = -1;
+                advance = 1;
+                break;
+                
+            case T_LONG:
+                if (type.has_short || type.has_long >= 2) {
+                    type.is_valid = 0; // Cannot mix short/long or have more than 2 longs
+                    return type;
+                }
+                type.has_long++;
+                advance = 1;
+                break;
+                
+            case T_SHORT:
+                if (type.has_long || type.has_short) {
+                    type.is_valid = 0; // Cannot mix short/long or have multiple shorts
+                    return type;
+                }
+                type.has_short = 1;
+                advance = 1;
+                break;
+                
+            case T_INT:
+                if (type.base_type != 0) {
+                    type.is_valid = 0; // Cannot have multiple base types
+                    return type;
+                }
+                type.base_type = T_INT;
+                advance = 1;
+                break;
+                
+            case T_CHAR:
+                if (type.base_type != 0 || type.has_long || type.has_short) {
+                    type.is_valid = 0; // char cannot be combined with long/short
+                    return type;
+                }
+                type.base_type = T_CHAR;
+                advance = 1;
+                break;
+                
+            case T_FLOAT:
+            case T_DOUBLE:
+            case T_VOID:
+                if (type.base_type != 0 || type.has_signed != 0 || type.has_long || type.has_short) {
+                    type.is_valid = 0; // float/double/void cannot be combined with modifiers
+                    return type;
+                }
+                type.base_type = token.id;
+                advance = 1;
+                break;
+                
+            default:
+                // Not a type specifier, stop parsing
+                if (tokens_consumed == 0) {
+                    type.is_valid = 0; // No type specifiers found
+                }
+                return type;
+        }
+        
+        if (advance) {
+            next_token();
+            tokens_consumed++;
+        } else {
+            break;
+        }
+    }
+    
+    // Set default base type if none specified
+    if (type.base_type == 0 && (type.has_signed != 0 || type.has_long || type.has_short)) {
+        type.base_type = T_INT; // Default to int for signed/unsigned/long/short
+    }
+    
+    return type;
+}
+
+/**
+ * @brief Check if the current token starts a type specifier
+ */
+static int is_type_specifier_start(TokenID_t token_id) {
+    return (token_id == T_INT || token_id == T_CHAR || token_id == T_FLOAT || 
+            token_id == T_DOUBLE || token_id == T_VOID || token_id == T_LONG ||
+            token_id == T_SHORT || token_id == T_UNSIGNED || token_id == T_SIGNED ||
+            token_id == T_STRUCT || token_id == T_UNION || token_id == T_ENUM ||
+            token_id == T_TYPEDEF || token_id == T_EXTERN || token_id == T_STATIC ||
+            token_id == T_AUTO || token_id == T_REGISTER || token_id == T_CONST ||
+            token_id == T_VOLATILE);
+}
+
+/**
+ * @brief Main function for cc1 parser
+ * @param argc Number of command line arguments
+ * @param argv Array of command line arguments: cc1 <sstorfile> <tokenfile> <astfile> <symfile>
+ * @return 0 on success, non-zero on error
  */
 int main(int argc, char *argv[]) {
     if (argc != 5) {
-        fprintf(stderr, "Usage: %s <sstorefile> <tokenfile> <astfile> <symfile>\n", argv[0]);
-        return 1;
-    }
-
-    // Initialize storage systems
-    if (sstore_open(argv[1]) != 0) {
-        fprintf(stderr, "Error: Cannot open sstorefile %s\n", argv[1]);
+        fprintf(stderr, "Usage: %s <sstorfile> <tokenfile> <astfile> <symfile>\n", argv[0]);
         return 1;
     }
     
-    if (tstore_open(argv[2]) != 0) {
+    // Initialize stores
+    if (sstore_init(argv[1]) != 0) {
+        fprintf(stderr, "Error: Cannot open sstorfile %s\n", argv[1]);
+        return 1;
+    }
+    
+    if (tstore_init(argv[2]) != 0) {
         fprintf(stderr, "Error: Cannot open tokenfile %s\n", argv[2]);
         sstore_close();
         return 1;
@@ -488,33 +635,29 @@ int main(int argc, char *argv[]) {
         sstore_close();
         return 1;
     }
-
-    // Initialize memory management and parser
-    HBInit();
-    parser_init();
-
-    // Parse the program
-    ASTNodeIdx_t program_ast = parse_program();
     
-    if (program_ast) {
-        fprintf(stderr, "Parsing completed successfully\n");
-    } else {
+    // Initialize parser
+    parser_init();
+    
+    // Parse the program
+    ASTNodeIdx_t program = parse_program();
+    
+    if (program == 0) {
         fprintf(stderr, "Parsing failed\n");
+        parser_cleanup();
+        symtab_close();
+        astore_close();
+        tstore_close();
+        sstore_close();
+        return 1;
     }
-
-    // Print statistics
-    fprintf(stderr, "symbols: available\n");
-    fprintf(stderr, "nodes: available\n");
-    fprintf(stderr, "tokens: %u\n", tstore_getidx());
-    fprintf(stderr, "sstoreidx: available, sstoresize: available\n");
-
-    // Cleanup
+    
+    // Clean up
     parser_cleanup();
-    HBEnd();
     symtab_close();
     astore_close();
     tstore_close();
     sstore_close();
-
-    return error_core_has_errors() ? 1 : 0;
+    
+    return 0;
 }
