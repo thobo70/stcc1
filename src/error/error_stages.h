@@ -7,8 +7,8 @@
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  */
 
-#ifndef SRC_ERROR_STAGES_H_
-#define SRC_ERROR_STAGES_H_
+#ifndef SRC_ERROR_ERROR_STAGES_H_
+#define SRC_ERROR_ERROR_STAGES_H_
 
 #include "error_core.h"
 #include "../lexer/ctoken.h"
@@ -102,7 +102,7 @@ RecoveryStrategy_t syntax_suggest_recovery(const SyntaxErrorContext_t* context);
 int syntax_attempt_recovery(RecoveryStrategy_t strategy);
 
 // ============================================================================
-// SEMANTIC ANALYSIS ERROR HANDLER  
+// SEMANTIC ANALYSIS ERROR HANDLER
 // ============================================================================
 
 // Semantic error codes
@@ -196,4 +196,4 @@ void error_report_with_context(ErrorLevel_t level, ErrorCategory_t category,
 void error_add_related_error(CompilerError_t* primary, CompilerError_t* related);
 void error_print_error_chain(const CompilerError_t* primary);
 
-#endif  // SRC_ERROR_STAGES_H_
+#endif  // SRC_ERROR_ERROR_STAGES_H_

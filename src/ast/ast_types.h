@@ -7,16 +7,17 @@
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  */
 
-#ifndef SRC_AST_TYPES_H_
-#define SRC_AST_TYPES_H_
+#ifndef SRC_AST_AST_TYPES_H_
+#define SRC_AST_AST_TYPES_H_
 
+#include <stdint.h>
 #include "../storage/sstore.h"
 #include "../lexer/ctoken.h"
 
 // Forward declarations
-typedef unsigned short ASTNodeIdx_t;
-typedef unsigned short SymTabIdx_t;
-typedef unsigned short TypeIdx_t;
+typedef uint16_t ASTNodeIdx_t;
+typedef uint16_t SymTabIdx_t;
+typedef uint16_t TypeIdx_t;
 
 /**
  * @brief AST node categories for different compiler phases
@@ -39,7 +40,7 @@ typedef enum {
     AST_TRANSLATION_UNIT,
     AST_EOF,
     AST_ERROR,
-    
+
     // Declaration nodes (10-29)
     AST_FUNCTION_DECL = 10,
     AST_FUNCTION_DEF,
@@ -51,7 +52,7 @@ typedef enum {
     AST_UNION_DECL,
     AST_ENUM_DECL,
     AST_ENUM_CONSTANT,
-    
+
     // Type nodes (30-49)
     AST_TYPE_BASIC = 30,    // int, char, float, etc.
     AST_TYPE_POINTER,
@@ -63,7 +64,7 @@ typedef enum {
     AST_TYPE_TYPEDEF,
     AST_TYPE_QUALIFIER,     // const, volatile
     AST_TYPE_STORAGE,       // static, extern, auto, register
-    
+
     // Statement nodes (50-79)
     AST_STMT_COMPOUND = 50,
     AST_STMT_EXPRESSION,
@@ -80,7 +81,7 @@ typedef enum {
     AST_STMT_GOTO,
     AST_STMT_LABEL,
     AST_STMT_EMPTY,
-    
+
     // Expression nodes (80-129)
     AST_EXPR_LITERAL = 80,
     AST_EXPR_IDENTIFIER,
@@ -97,13 +98,13 @@ typedef enum {
     AST_EXPR_COMMA,
     AST_EXPR_INIT_LIST,     // {1, 2, 3}
     AST_EXPR_COMPOUND_LITERAL,
-    
+
     // Literal subtypes (130-139)
     AST_LIT_INTEGER = 130,
     AST_LIT_FLOAT,
     AST_LIT_CHAR,
     AST_LIT_STRING,
-    
+
     AST_TYPE_COUNT
 } ASTNodeType;
 
@@ -137,28 +138,28 @@ typedef enum {
  */
 typedef struct ASTNode {
     ASTNodeType type;       // 2 bytes - node type
-    ASTNodeFlags flags;     // 2 bytes - compiler phase flags  
+    ASTNodeFlags flags;     // 2 bytes - compiler phase flags
     TokenIdx_t token_idx;   // 4 bytes - source token reference
     TypeIdx_t type_idx;     // 2 bytes - type information index
-    
+
     // Child nodes - flexible organization (14 bytes remaining)
     union {
         struct {
             ASTNodeIdx_t child1, child2, child3, child4;  // 8 bytes
             char padding[6];                              // 6 bytes
         } children;
-        
+
         struct {
             ASTNodeIdx_t left, right;                     // 4 bytes
             union {
                 SymTabIdx_t symbol_idx;                   // Symbol reference
                 sstore_pos_t string_pos;                  // String literal position
-                long long_value;                          // Integer literal
+                int64_t long_value;                          // Integer literal
                 double float_value;                       // Float literal
             } value;                                      // 8 bytes
             char padding[2];                              // 2 bytes
         } binary;
-        
+
         struct {
             ASTNodeIdx_t operand;                         // 2 bytes
             TokenID_t operator;                           // 2 bytes
@@ -169,21 +170,21 @@ typedef struct ASTNode {
             } data;                                       // 4 bytes
             char padding[2];                              // 2 bytes
         } unary;
-        
+
         struct {
             ASTNodeIdx_t declarations;                    // 2 bytes
             ASTNodeIdx_t statements;                      // 2 bytes
             SymTabIdx_t scope_idx;                        // 2 bytes
             char padding[8];                              // 8 bytes
         } compound;
-        
+
         struct {
             ASTNodeIdx_t condition;                       // 2 bytes
             ASTNodeIdx_t then_stmt;                       // 2 bytes
             ASTNodeIdx_t else_stmt;                       // 2 bytes
             char padding[8];                              // 8 bytes
         } conditional;
-        
+
         struct {
             ASTNodeIdx_t function;                        // 2 bytes
             ASTNodeIdx_t arguments;                       // 2 bytes
@@ -191,7 +192,7 @@ typedef struct ASTNode {
             char arg_count;                               // 1 byte
             char padding[7];                              // 7 bytes
         } call;
-        
+
         struct {
             SymTabIdx_t symbol_idx;                       // 2 bytes
             TypeIdx_t type_idx;                           // 2 bytes
@@ -199,7 +200,7 @@ typedef struct ASTNode {
             char storage_class;                           // 1 byte
             char padding[7];                              // 7 bytes
         } declaration;
-        
+
         // Raw access for maximum flexibility
         char raw_data[14];                                // 14 bytes total
     };
@@ -216,4 +217,4 @@ typedef struct ASTNodeList {
     ASTNodeIdx_t next;
 } ASTNodeList;
 
-#endif  // SRC_AST_TYPES_H_
+#endif  // SRC_AST_AST_TYPES_H_

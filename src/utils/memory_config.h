@@ -7,8 +7,8 @@
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  */
 
-#ifndef MEMORY_CONFIG_H
-#define MEMORY_CONFIG_H
+#ifndef SRC_UTILS_MEMORY_CONFIG_H_
+#define SRC_UTILS_MEMORY_CONFIG_H_
 
 // Memory budget configuration (in bytes)
 #define TARGET_TOTAL_MEMORY_KB    100    // Target: compile in under 100KB RAM
@@ -25,7 +25,7 @@
 #define SSTORE_BUFFER_SIZE       1024    // Buffer for frequently accessed strings
 #define SSTORE_MAX_STRING_LEN    256     // Maximum individual string length
 
-// Token storage optimization  
+// Token storage optimization
 #define TSTORE_BUFFER_SIZE       512     // Token lookahead buffer
 #define TSTORE_BATCH_SIZE        32      // Tokens to read/write at once
 
@@ -47,14 +47,14 @@
 
 // Feature toggles for memory optimization
 #define ENABLE_AST_COMPRESSION   1       // Compress AST nodes on disk
-#define ENABLE_STRING_INTERNING  1       // Deduplicate strings aggressively  
+#define ENABLE_STRING_INTERNING  1       // Deduplicate strings aggressively
 #define ENABLE_LAZY_LOADING      1       // Load symbols/AST on demand
 #define ENABLE_MEMORY_TRACKING   1       // Track memory usage for tuning
 
 // Debug and profiling
 #ifdef DEBUG_MEMORY
 #define MEMORY_TRACE(fmt, ...) fprintf(stderr, "[MEM] " fmt "\n", ##__VA_ARGS__)
-#else  
+#else
 #define MEMORY_TRACE(fmt, ...)
 #endif
 
@@ -80,4 +80,4 @@ void print_memory_usage(void);
 #warning "Storage buffers may be too large for memory budget"
 #endif
 
-#endif  // MEMORY_CONFIG_H
+#endif  // SRC_UTILS_MEMORY_CONFIG_H_

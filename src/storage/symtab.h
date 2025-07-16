@@ -1,12 +1,12 @@
 /**
  * @file symtab.h
  * @author Thomas Boos (tboos70@gmail.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2024-09-10
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  */
 #ifndef SYMTAB_H  // NOLINT
 #define SYMTAB_H

@@ -1,13 +1,14 @@
-#ifndef SSTORE_H
-#define SSTORE_H
+#ifndef SRC_STORAGE_SSTORE_H_
+#define SRC_STORAGE_SSTORE_H_
 
+#include <stdint.h>
 #include "../utils/hash.h"
 
 // Error code for sstore instead of pos
 #define SSTORE_ERR 0xFFFF
 
-typedef unsigned short sstore_pos_t;
-typedef unsigned short sstore_len_t;
+typedef uint16_t sstore_pos_t;
+typedef uint16_t sstore_len_t;
 
 typedef struct {
   hash_t hash;
@@ -24,4 +25,4 @@ void sstore_close(void);
 
 
 
-#endif  // SSTORE_H
+#endif  // SRC_STORAGE_SSTORE_H_

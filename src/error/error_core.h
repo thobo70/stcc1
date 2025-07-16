@@ -7,8 +7,8 @@
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  */
 
-#ifndef SRC_ERROR_CORE_H_
-#define SRC_ERROR_CORE_H_
+#ifndef SRC_ERROR_ERROR_CORE_H_
+#define SRC_ERROR_ERROR_CORE_H_
 
 #include <stdio.h>
 #include <stdint.h>
@@ -49,16 +49,16 @@ typedef struct CompilerError {
     ErrorLevel_t level;
     ErrorCategory_t category;
     SourceLocation_t location;
-    
+
     // Error identification
     uint32_t error_code;       // Unique error code
     const char* message;       // Primary error message
     const char* suggestion;    // Optional fix suggestion
-    
+
     // Context information
     const char* stage_name;    // Compiler stage name
     void* stage_context;       // Stage-specific context data
-    
+
     // Linked list for error chaining
     struct CompilerError* next;
 } CompilerError_t;
@@ -79,13 +79,13 @@ typedef struct {
     ErrorConfig_t config;
     CompilerError_t* error_list;    // Linked list of errors
     CompilerError_t* last_error;    // Last error for fast append
-    
+
     // Statistics
     int error_count[ERROR_FATAL + 1];    // Count by severity
     int category_count[ERROR_INTERNAL + 1]; // Count by category
     int total_errors;
     int total_warnings;
-    
+
     // State tracking
     int should_abort;
     int in_error_handler;      // Prevent recursive errors
@@ -131,4 +131,4 @@ void error_set_max_errors(int max_errors);
 void error_set_output_stream(FILE* stream);
 void error_enable_colors(int enable);
 
-#endif  // SRC_ERROR_CORE_H_
+#endif  // SRC_ERROR_ERROR_CORE_H_

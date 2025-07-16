@@ -7,8 +7,8 @@
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  */
 
-#ifndef SRC_AST_VISITOR_H_
-#define SRC_AST_VISITOR_H_
+#ifndef SRC_AST_AST_VISITOR_H_
+#define SRC_AST_AST_VISITOR_H_
 
 #include "ast_types.h"
 
@@ -27,13 +27,13 @@ typedef struct ASTVisitor {
     // Pre/post order callbacks
     ast_visit_func_t pre_visit;   // Called before visiting children
     ast_visit_func_t post_visit;  // Called after visiting children
-    
+
     // Category-specific callbacks
     ast_visit_func_t visit_declaration;
     ast_visit_func_t visit_statement;
     ast_visit_func_t visit_expression;
     ast_visit_func_t visit_type;
-    
+
     // Specific node type callbacks (optional)
     ast_visit_func_t visit_function_def;
     ast_visit_func_t visit_var_decl;
@@ -43,13 +43,13 @@ typedef struct ASTVisitor {
     ast_visit_func_t visit_call_expr;
     ast_visit_func_t visit_identifier;
     ast_visit_func_t visit_literal;
-    
+
     // Error handling
     ast_visit_func_t visit_error;
-    
+
     // User context
     void* context;
-    
+
     // Traversal options
     int max_depth;            // Maximum recursion depth (0 = unlimited)
     ASTNodeFlags skip_flags;  // Skip nodes with these flags
@@ -105,4 +105,4 @@ typedef struct {
 
 int ast_transform_tree(ASTNodeIdx_t root_idx, TransformContext* transform);
 
-#endif  // SRC_AST_VISITOR_H_
+#endif  // SRC_AST_AST_VISITOR_H_

@@ -7,8 +7,8 @@
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  */
 
-#ifndef SRC_AST_BUILDER_H_
-#define SRC_AST_BUILDER_H_
+#ifndef SRC_AST_AST_BUILDER_H_
+#define SRC_AST_AST_BUILDER_H_
 
 #include "ast_types.h"
 #include "../utils/hmapbuf.h"
@@ -29,7 +29,7 @@ void ast_builder_cleanup(ASTBuilder* builder);
 
 // Core node creation functions
 ASTNodeIdx_t ast_create_node(ASTBuilder* builder, ASTNodeType type, TokenIdx_t token_idx);
-ASTNodeIdx_t ast_create_typed_node(ASTBuilder* builder, ASTNodeType type, 
+ASTNodeIdx_t ast_create_typed_node(ASTBuilder* builder, ASTNodeType type,
                                   TokenIdx_t token_idx, TypeIdx_t type_idx);
 
 // Declaration node builders
@@ -108,4 +108,4 @@ size_t ast_calculate_subtree_size(ASTNodeIdx_t root_idx);
 int ast_count_nodes_by_type(ASTNodeIdx_t root_idx, ASTNodeType type);
 void ast_collect_garbage(void);
 
-#endif  // SRC_AST_BUILDER_H_
+#endif  // SRC_AST_AST_BUILDER_H_

@@ -1,12 +1,12 @@
 /**
  * @file hash.h
  * @author Thomas Boos (tboos70@gmail.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2024-09-01
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  */
 #ifndef _HASH_H  // NOLINT
 #define _HASH_H

@@ -1,12 +1,12 @@
 /**
  * @file ctoken.h
  * @author Thomas Boos (tboos70@gmail.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2024-09-01
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  */
 #ifndef CTOKEN_H  // NOLINT
 #define CTOKEN_H

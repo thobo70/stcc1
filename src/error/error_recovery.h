@@ -7,8 +7,8 @@
  * @copyright Copyright (c) 2024-2025 Thomas Boos
  */
 
-#ifndef SRC_ERROR_RECOVERY_H_
-#define SRC_ERROR_RECOVERY_H_
+#ifndef SRC_ERROR_ERROR_RECOVERY_H_
+#define SRC_ERROR_ERROR_RECOVERY_H_
 
 #include "error_core.h"
 #include "ctoken.h"
@@ -164,9 +164,9 @@ typedef struct {
     double average_quality;
 } RecoveryStats_t;
 
-void recovery_record_attempt(const RecoveryResult_t* result, 
+void recovery_record_attempt(const RecoveryResult_t* result,
                             const RecoveryQuality_t* quality);
-void recovery_update_strategy_effectiveness(ErrorCategory_t category, 
+void recovery_update_strategy_effectiveness(ErrorCategory_t category,
                                            RecoveryAction_t action,
                                            int was_successful);
 
@@ -186,4 +186,4 @@ typedef struct {
 void recovery_set_config(const RecoveryConfig_t* config);
 RecoveryConfig_t recovery_get_default_config(void);
 
-#endif  // SRC_ERROR_RECOVERY_H_
+#endif  // SRC_ERROR_ERROR_RECOVERY_H_
