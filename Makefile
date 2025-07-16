@@ -21,7 +21,7 @@ CC = gcc
 CFLAGS = -g -Og -Wall -Wextra -std=c99
 
 # Source files with new directory structure
-SRC = $(LEXER_SRC)/cc0.c $(LEXER_SRC)/cc0t.c $(PARSER_SRC)/cc1.c $(STORAGE_SRC)/sstore.c $(STORAGE_SRC)/tstore.c $(STORAGE_SRC)/astore.c $(UTILS_SRC)/hash.c $(STORAGE_SRC)/symtab.c $(UTILS_SRC)/hmapbuf.c
+SRC = $(LEXER_SRC)/cc0.c $(LEXER_SRC)/cc0t.c $(PARSER_SRC)/cc1.c $(PARSER_SRC)/cc1t.c $(STORAGE_SRC)/sstore.c $(STORAGE_SRC)/tstore.c $(STORAGE_SRC)/astore.c $(UTILS_SRC)/hash.c $(STORAGE_SRC)/symtab.c $(UTILS_SRC)/hmapbuf.c
 
 # Enhanced source files - AST and advanced parsing components
 ENHANCED_SRC = $(AST_SRC)/ast_builder.c $(ERROR_SRC)/error_core.c $(ERROR_SRC)/error_stages.c
@@ -33,10 +33,14 @@ OBJ0t = $(OBJDIR)/cc0t.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/hash.o
 # Enhanced cc1 with core features (simplified AST integration)
 OBJ1 = $(OBJDIR)/cc1.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/hash.o $(OBJDIR)/symtab.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/error_core.o $(OBJDIR)/error_stages.o
 
+# cc1t for AST and symbol table inspection
+OBJ1t = $(OBJDIR)/cc1t.o $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o
+
 # Output executable
 OUT0 = $(BINDIR)/cc0
 OUT0t = $(BINDIR)/cc0t
 OUT1 = $(BINDIR)/cc1
+OUT1t = $(BINDIR)/cc1t
 
 # Dependency generation for all source files including enhanced components
 .depend: $(SRC) $(ENHANCED_SRC)
@@ -45,7 +49,7 @@ OUT1 = $(BINDIR)/cc1
 include .depend
 
 # Default target
-all: $(OBJDIR) $(BINDIR) $(OUT0) $(OUT0t) $(OUT1)
+all: $(OBJDIR) $(BINDIR) $(OUT0) $(OUT0t) $(OUT1) $(OUT1t)
 
 # Doxygen documentation
 $(DOCDIR)/html/index.html: $(DOCDIR) Doxyfile $(SRC)
@@ -71,6 +75,9 @@ $(OUT0): $(OBJ0)
 $(OUT1): $(OBJ1)
 	$(CC) $(CFLAGS) -o $(OUT1) $(OBJ1)
 
+$(OUT1t): $(OBJ1t)
+	$(CC) $(CFLAGS) -o $(OUT1t) $(OBJ1t)
+
 $(OUT0t): $(OBJ0t)
 	$(CC) $(CFLAGS) -o $(OUT0t) $(OBJ0t)
 
@@ -82,6 +89,9 @@ $(OBJDIR)/cc0t.o: $(LEXER_SRC)/cc0t.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/cc1.o: $(PARSER_SRC)/cc1.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(OBJDIR)/cc1t.o: $(PARSER_SRC)/cc1t.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/sstore.o: $(STORAGE_SRC)/sstore.c
@@ -122,6 +132,7 @@ test: all
 	$(OUT0) $(TESTDIR)/t.in $(TESTDIR)/sstore.out $(TESTDIR)/tokens.out 2>&1 > $(TESTDIR)/cc0.out
 	$(OUT0t) $(TESTDIR)/sstore.out $(TESTDIR)/tokens.out > $(TESTDIR)/t.out
 	$(OUT1) $(TESTDIR)/sstore.out $(TESTDIR)/tokens.out $(TESTDIR)/ast.out $(TESTDIR)/sym.out
+	$(OUT1t) $(TESTDIR)/sstore.out $(TESTDIR)/ast.out $(TESTDIR)/sym.out > $(TESTDIR)/cc1t.out
 
 # Phony targets
 .PHONY: all clean doc test
