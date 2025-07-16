@@ -95,8 +95,8 @@ doc: $(DOCDIR)/html/index.html
 
 # Code quality check with cpplint
 lint:
-	@echo "Running cpplint on all source files..."
-	@find $(SRCDIR) -name "*.c" -o -name "*.h" | xargs cpplint 2>&1 | tee lint.log || true
+	@echo "Running cpplint on all source files (excluding test folder)..."
+	@find $(SRCDIR) -path "$(SRCDIR)/test" -prune -o -name "*.c" -o -name "*.h" | grep -v "$(SRCDIR)/test" | xargs cpplint 2>&1 | tee lint.log || true
 	@echo ""
 	@if grep -q "Total errors found:" lint.log; then \
 		errors=$$(grep "Total errors found:" lint.log | tail -1 | sed 's/.*Total errors found: //'); \

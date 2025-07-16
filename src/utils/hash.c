@@ -1,12 +1,12 @@
 /**
  * @file hash.c
  * @author Thomas Boos (tboos70@gmail.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2024-09-22
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  */
 #include "hash.h"
 
@@ -16,7 +16,7 @@
 
 /**
  * @brief calculate the hash value of a string
- * 
+ *
  * @param str       string to hash
  * @param length    length of the string
  * @return hash_t   hash value

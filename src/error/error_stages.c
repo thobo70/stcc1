@@ -95,7 +95,7 @@ void lex_error_cleanup(void) {
 void lex_error_invalid_char(TokenIdx_t token_idx, char invalid_char) {
     char message[128];
     char suggestion[128];
-    
+
     if (invalid_char >= 32 && invalid_char <= 126) {
         snprintf(message, sizeof(message), "Invalid character '%c' (0x%02x)",
                 invalid_char, (unsigned char)invalid_char);
@@ -103,12 +103,12 @@ void lex_error_invalid_char(TokenIdx_t token_idx, char invalid_char) {
         snprintf(message, sizeof(message), "Invalid character (0x%02x)",
                 (unsigned char)invalid_char);
     }
-    
+
     snprintf(suggestion, sizeof(suggestion),
             "Remove the invalid character or check file encoding");
-    
+
     g_lex_context.unexpected_char = invalid_char;
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_LEXICAL, token_idx,
                              LEX_ERROR_INVALID_CHAR, message, suggestion,
                              &g_lex_context);
@@ -142,13 +142,13 @@ void lex_error_unterminated_char(TokenIdx_t token_idx) {
 void lex_error_invalid_escape(TokenIdx_t token_idx, char escape_char) {
     char message[128];
     char suggestion[256];
-    
+
     snprintf(message, sizeof(message), "Invalid escape sequence '\\%c'", escape_char);
     snprintf(suggestion, sizeof(suggestion),
             "Use valid escape sequences: \\n, \\t, \\r, \\\\, \\\", \\' or \\xHH");
-    
+
     g_lex_context.unexpected_char = escape_char;
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_LEXICAL, token_idx,
                              LEX_ERROR_INVALID_ESCAPE, message, suggestion,
                              &g_lex_context);
@@ -160,12 +160,12 @@ void lex_error_invalid_escape(TokenIdx_t token_idx, char escape_char) {
 void lex_error_invalid_number(TokenIdx_t token_idx, const char* number_text) {
     char message[256];
     char suggestion[256];
-    
+
     snprintf(message, sizeof(message), "Invalid number format: '%.50s'",
             number_text ? number_text : "");
     snprintf(suggestion, sizeof(suggestion),
             "Check number format (decimal: 123, hex: 0x1F, octal: 077)");
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_LEXICAL, token_idx,
                              LEX_ERROR_INVALID_NUMBER, message, suggestion,
                              &g_lex_context);
@@ -199,19 +199,19 @@ void syntax_error_unexpected_token(TokenIdx_t token_idx, TokenID_t expected,
                                   TokenID_t found) {
     char message[256];
     char suggestion[256];
-    
+
     // Get token names (simplified - would need a token name lookup table)
     const char* expected_name = (expected < 100) ? "keyword/operator" : "identifier";
     const char* found_name = (found < 100) ? "keyword/operator" : "identifier";
-    
+
     snprintf(message, sizeof(message), "Expected %s but found %s",
             expected_name, found_name);
     snprintf(suggestion, sizeof(suggestion),
             "Check syntax around this location");
-    
+
     g_syntax_context.expected_token = expected;
     g_syntax_context.found_token = found;
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_SYNTAX, token_idx,
                              SYNTAX_ERROR_UNEXPECTED_TOKEN, message, suggestion,
                              &g_syntax_context);
@@ -223,17 +223,17 @@ void syntax_error_unexpected_token(TokenIdx_t token_idx, TokenID_t expected,
 void syntax_error_missing_token(TokenIdx_t token_idx, TokenID_t missing) {
     char message[256];
     char suggestion[256];
-    
+
     const char* token_name = (missing == T_SEMICOLON) ? "semicolon (;)" :
                             (missing == T_RBRACE) ? "closing brace (})" :
                             (missing == T_RPAREN) ? "closing parenthesis ())" :
                             "required token";
-    
+
     snprintf(message, sizeof(message), "Missing %s", token_name);
     snprintf(suggestion, sizeof(suggestion), "Add the missing %s", token_name);
-    
+
     g_syntax_context.expected_token = missing;
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_SYNTAX, token_idx,
                              SYNTAX_ERROR_MISSING_TOKEN, message, suggestion,
                              &g_syntax_context);
@@ -245,12 +245,12 @@ void syntax_error_missing_token(TokenIdx_t token_idx, TokenID_t missing) {
 void syntax_error_invalid_expression(TokenIdx_t token_idx, const char* context) {
     char message[256];
     char suggestion[256];
-    
+
     snprintf(message, sizeof(message), "Invalid expression%s%s",
             context ? " in " : "", context ? context : "");
     snprintf(suggestion, sizeof(suggestion),
             "Check expression syntax and operator precedence");
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_SYNTAX, token_idx,
                              SYNTAX_ERROR_INVALID_EXPRESSION, message, suggestion,
                              &g_syntax_context);
@@ -262,17 +262,17 @@ void syntax_error_invalid_expression(TokenIdx_t token_idx, const char* context) 
 void syntax_error_unmatched_delimiter(TokenIdx_t token_idx, char delimiter) {
     char message[256];
     char suggestion[256];
-    
+
     const char* delimiter_name = (delimiter == '{') ? "brace" :
                                 (delimiter == '(') ? "parenthesis" :
                                 (delimiter == '[') ? "bracket" : "delimiter";
-    
+
     snprintf(message, sizeof(message), "Unmatched %c (%s)", delimiter, delimiter_name);
     snprintf(suggestion, sizeof(suggestion), "Add matching closing %s",
             (delimiter == '{') ? "}" :
             (delimiter == '(') ? ")" :
             (delimiter == '[') ? "]" : "delimiter");
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_SYNTAX, token_idx,
                              SYNTAX_ERROR_UNMATCHED_BRACE, message, suggestion,
                              &g_syntax_context);
@@ -305,14 +305,14 @@ void semantic_error_cleanup(void) {
 void semantic_error_undefined_symbol(TokenIdx_t token_idx, const char* symbol_name) {
     char message[256];
     char suggestion[256];
-    
+
     snprintf(message, sizeof(message), "Undefined symbol '%s'",
             symbol_name ? symbol_name : "unknown");
     snprintf(suggestion, sizeof(suggestion),
             "Declare the symbol before using it, or check for typos");
-    
+
     g_semantic_context.symbol_name = symbol_name;
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_SEMANTIC, token_idx,
                              SEMANTIC_ERROR_UNDEFINED_SYMBOL, message, suggestion,
                              &g_semantic_context);
@@ -325,10 +325,10 @@ void semantic_error_redefined_symbol(TokenIdx_t token_idx, const char* symbol_na
                                     TokenIdx_t first_definition) {
     char message[256];
     char suggestion[256];
-    
+
     snprintf(message, sizeof(message), "Symbol '%s' redefined",
             symbol_name ? symbol_name : "unknown");
-    
+
     if (first_definition > 0) {
         snprintf(suggestion, sizeof(suggestion),
                 "Previous definition at token %u. Use a different name or remove one definition",
@@ -337,9 +337,9 @@ void semantic_error_redefined_symbol(TokenIdx_t token_idx, const char* symbol_na
         snprintf(suggestion, sizeof(suggestion),
                 "Symbol already defined. Use a different name or remove one definition");
     }
-    
+
     g_semantic_context.symbol_name = symbol_name;
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_SEMANTIC, token_idx,
                              SEMANTIC_ERROR_REDEFINED_SYMBOL, message, suggestion,
                              &g_semantic_context);
@@ -352,15 +352,15 @@ void semantic_error_type_mismatch(TokenIdx_t token_idx, TypeIdx_t expected,
                                  TypeIdx_t found, const char* context) {
     char message[256];
     char suggestion[256];
-    
+
     snprintf(message, sizeof(message), "Type mismatch%s%s (expected type %u, found type %u)",
             context ? " in " : "", context ? context : "", expected, found);
     snprintf(suggestion, sizeof(suggestion),
             "Cast the value to the expected type or change the variable type");
-    
+
     g_semantic_context.expected_type = expected;
     g_semantic_context.found_type = found;
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_SEMANTIC, token_idx,
                              SEMANTIC_ERROR_TYPE_MISMATCH, message, suggestion,
                              &g_semantic_context);
@@ -395,16 +395,16 @@ void codegen_error_unsupported_feature(ASTNodeIdx_t node_idx, const char* featur
     (void)node_idx;  // Suppress unused parameter warning
     char message[256];
     char suggestion[256];
-    
+
     snprintf(message, sizeof(message), "Unsupported feature: %s",
             feature ? feature : "unknown feature");
     snprintf(suggestion, sizeof(suggestion),
             "This feature is not yet implemented for %s target",
             g_codegen_context.target_architecture);
-    
+
     // Convert AST node to token for location (simplified)
     TokenIdx_t token_idx = 0;  // Would need AST-to-token mapping
-    
+
     error_report_with_context(ERROR_ERROR, ERROR_CODEGEN, token_idx,
                              CODEGEN_ERROR_UNSUPPORTED_FEATURE, message, suggestion,
                              &g_codegen_context);

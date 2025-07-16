@@ -20,11 +20,11 @@
  */
 void ast_builder_init(ASTBuilder* builder, const char* phase_name) {
     if (!builder) return;
-    
+
     memset(builder, 0, sizeof(ASTBuilder));
     builder->phase_name = phase_name;
     builder->default_flags = AST_FLAG_PARSED;
-    
+
     printf("[AST] Initializing builder for phase: %s\n", phase_name);
 }
 
@@ -33,30 +33,30 @@ void ast_builder_init(ASTBuilder* builder, const char* phase_name) {
  */
 void ast_builder_cleanup(ASTBuilder* builder) {
     if (!builder) return;
-    
+
     printf("[AST] %s phase complete: %d errors, %d warnings\n",
            builder->phase_name, builder->error_count, builder->warning_count);
-    
+
     memset(builder, 0, sizeof(ASTBuilder));
 }
 
 /**
  * @brief Create a basic AST node
  */
-ASTNodeIdx_t ast_create_node(ASTBuilder* builder, ASTNodeType type, 
+ASTNodeIdx_t ast_create_node(ASTBuilder* builder, ASTNodeType type,
                             TokenIdx_t token_idx) {
     HBNode* hb_node = HBNew(HBMODE_AST);
     if (!hb_node) {
         if (builder) builder->error_count++;
         return 0;
     }
-    
+
     // Initialize the AST node
     memset(&hb_node->ast, 0, sizeof(ASTNode));
     hb_node->ast.type = type;
     hb_node->ast.token_idx = token_idx;
     hb_node->ast.flags = builder ? builder->default_flags : AST_FLAG_PARSED;
-    
+
     return hb_node->idx;
 }
 
@@ -99,11 +99,11 @@ ASTNodeIdx_t ast_build_function_decl(ASTBuilder* builder, TokenIdx_t name_token,
 ASTNodeIdx_t ast_build_function_def(ASTBuilder* builder, ASTNodeIdx_t decl,
                                    ASTNodeIdx_t body) {
     if (decl == 0) return 0;
-    
+
     // Get the declaration node to extract token info
     HBNode* decl_node = HBGet(decl, HBMODE_AST);
     if (!decl_node) return 0;
-    
+
     ASTNodeIdx_t node_idx = ast_create_node(builder, AST_FUNCTION_DEF,
                                            decl_node->ast.token_idx);
     if (node_idx != 0) {
@@ -311,7 +311,7 @@ void ast_print_node(ASTNodeIdx_t node_idx, int indent) {
         printf("%*sNULL NODE\n", indent, "");
         return;
     }
-    
+
     const char* type_names[] = {
         "FREE", "PROGRAM", "TRANSLATION_UNIT", "EOF", "ERROR",
         [AST_FUNCTION_DECL] = "FUNCTION_DECL",
@@ -327,13 +327,13 @@ void ast_print_node(ASTNodeIdx_t node_idx, int indent) {
         [AST_EXPR_IDENTIFIER] = "IDENTIFIER",
         [AST_LIT_INTEGER] = "INTEGER_LIT"
     };
-    
-    const char* type_name = (hb_node->ast.type < AST_TYPE_COUNT && 
+
+    const char* type_name = (hb_node->ast.type < AST_TYPE_COUNT &&
                             type_names[hb_node->ast.type]) ?
                            type_names[hb_node->ast.type] : "UNKNOWN";
-    
+
     printf("%*s%s (idx=%d, token=%d, flags=0x%x)\n",
-           indent, "", type_name, node_idx, 
+           indent, "", type_name, node_idx,
            hb_node->ast.token_idx, hb_node->ast.flags);
 }
 
@@ -342,13 +342,13 @@ void ast_print_node(ASTNodeIdx_t node_idx, int indent) {
  */
 int ast_validate_node(ASTNodeIdx_t node_idx) {
     if (node_idx == 0) return 1;  // NULL nodes are valid
-    
+
     HBNode* hb_node = HBGet(node_idx, HBMODE_AST);
     if (!hb_node) return 0;  // Invalid node reference
-    
+
     // Check if node type is valid
     if (hb_node->ast.type >= AST_TYPE_COUNT) return 0;
-    
+
     // Category-specific validation could be added here
     ASTCategory category = ast_get_category(hb_node->ast.type);
     switch (category) {
@@ -364,6 +364,6 @@ int ast_validate_node(ASTNodeIdx_t node_idx) {
         default:
             break;
     }
-    
+
     return 1;  // Node is valid
 }

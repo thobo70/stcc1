@@ -1,12 +1,12 @@
 /**
  * @file sstore.c
  * @author Thomas Boos (tboos70@gmail.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2024-09-08
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  */
 #include "sstore.h"
 

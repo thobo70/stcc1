@@ -1,12 +1,12 @@
 /**
  * @file hmapbuf.c
  * @author Thomas Boos (tboos70@gmail.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2024-09-29
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  * The hash map buffer module provides a simple memory management system for storing
  * symbol table entries and abstract syntax tree nodes. The nodes are stored in a hash
  * table and a linked list ring. The hash table is used to quickly find a node by its ID,

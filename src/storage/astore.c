@@ -4,12 +4,12 @@
  * @brief Implementation of the abstract syntax tree store.
  * @version 0.1
  * @date 2024-09-08
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  * ASTMemnode is a structure that holds an ASTNode and additional information
- * for the abstract syntax tree store. 
- * 
+ * for the abstract syntax tree store.
+ *
  */
 
 #include <stdio.h>

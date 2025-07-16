@@ -1,20 +1,20 @@
 /**
  * @file cc0.c
  * @author Thomas Boos (tboos70@gmail.com)
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2024-09-01
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  * This file implements a lexical analyzer (lexer) that processes an input C source file
  * to identify various tokens such as operators, keywords, literals, and identifiers.
- * 
+ *
  * The lexer reads the input file line by line, using helper functions to match patterns
  * for different token types. Identified tokens are stored for further processing.
- * 
+ *
  * ## Key Components
- * 
+ *
  * - **Macros and Type Definitions**: Simplify token handling and identification.
  * - **Token Type Arrays**: Define known operators and keywords.
  * - **Global Variables**: Track the current file position and line number.
@@ -23,18 +23,18 @@
  * - **Directive Parsing**: Process preprocessor directives.
  * - **Token Extraction**: Read and identify tokens from the input file.
  * - **Token Printing**: Output token details for debugging.
- * 
+ *
  * ## Main Function
- * 
+ *
  * The main function initializes the string and token stores, processes the input file
  * to extract tokens, and prints each token. It handles cleanup before exiting.
- * 
+ *
  * This lexer is designed to facilitate the initial stages of a compiler or interpreter
  * by converting source code into a stream of tokens.
- * 
+ *
  * @startuml
  * !define RECTANGLE class
- * 
+ *
  * RECTANGLE cc0 {
  *   +main(argc: int, argv: char*[]): int
  *   +nextToken(fp: FILE*): Token_t*
@@ -47,22 +47,22 @@
  *   +is_litstr(buf: char*, delim: char, id: TokenID_t): TokenType_t*
  *   +is_id(buf: char*): TokenType_t*
  * }
- * 
+ *
  * RECTANGLE StringStore {
  *   +sstore_init(filename: char*): int
  *   +sstore_close(): void
  *   +sstore_str(str: char*, len: int): sstore_pos_t
  * }
- * 
+ *
  * RECTANGLE TokenStore {
  *   +tstore_init(filename: char*): int
  *   +tstore_close(): void
  *   +tstore_add(token: Token_t*): void
  * }
- * 
+ *
  * cc0 --> StringStore : uses
  * cc0 --> TokenStore : uses
- * 
+ *
  * @enduml
  */
 
@@ -190,10 +190,10 @@ unsigned int currline = 0;
 
 /**
  * @brief Identifies if the given buffer contains an operator.
- * 
+ *
  * This function checks if the provided buffer matches any known operator lexeme.
  * If a match is found, it returns a pointer to the corresponding TokenType_t structure.
- * 
+ *
  * @param buf The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the operator, or NULL if not an operator.
  */
@@ -213,11 +213,11 @@ static TokenType_t *is_operator(char *buf) {
 
 /**
  * @brief Identifies if the given buffer contains a keyword.
- * 
+ *
  * This function checks if the provided buffer matches any known keyword lexeme.
  * If a match is found and it's not a prefix of an identifier, it returns a pointer
  * to the corresponding TokenType_t structure.
- * 
+ *
  * @param buf The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the keyword, or NULL if not a keyword.
  */
@@ -240,10 +240,10 @@ static TokenType_t *is_keyword(char *buf) {
 
 /**
  * @brief Identifies if the given lexeme is a numeric literal.
- * 
+ *
  * This function checks if the provided lexeme represents a numeric literal.
  * It determines whether the number is an integer or a floating-point number.
- * 
+ *
  * @param lexeme The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the numeric literal, or NULL if not a numeric literal.
  */
@@ -306,10 +306,10 @@ static TokenType_t *is_litnumber(char *lexeme) {
 
 /**
  * @brief Identifies if the given buffer contains a string or character literal.
- * 
+ *
  * This function checks if the provided buffer represents a string or character literal.
  * It handles escape sequences within the literals.
- * 
+ *
  * @param buf The input string to be checked.
  * @param delim The delimiter character (either '"' for strings or '\'' for characters).
  * @param id The token ID to be assigned if a match is found.
@@ -346,10 +346,10 @@ static TokenType_t *is_litstr(char *buf, char delim, TokenID_t id) {
 
 /**
  * @brief Identifies if the given buffer contains an identifier.
- * 
+ *
  * This function checks if the provided buffer represents an identifier.
  * If a match is found, it returns a pointer to the corresponding TokenType_t structure.
- * 
+ *
  * @param buf The input string to be checked.
  * @return TokenType_t* A pointer to the TokenType_t structure representing the identifier, or NULL if not an identifier.
  */
@@ -372,10 +372,10 @@ static TokenType_t *is_id(char *buf) {
 
 /**
  * @brief Processes escape sequences in character and string literals.
- * 
+ *
  * This function converts escape sequences (e.g., '\n', '\t') into their corresponding
  * character values.
- * 
+ *
  * @param c The escape sequence character to be processed.
  * @return int The corresponding character value of the escape sequence.
  */
@@ -406,10 +406,10 @@ static int process_esc(int c) {
 
 /**
  * @brief Parses a preprocessor directive for line number and file name.
- * 
+ *
  * This function processes preprocessor directives in the format `# <line> "<file>"`.
  * It updates the current file position and line number accordingly.
- * 
+ *
  * @param buf The input string containing the preprocessor directive.
  */
 static void parse_directive(char *buf) {
@@ -449,11 +449,11 @@ static void parse_directive(char *buf) {
 
 /**
  * @brief Extracts the next token from the input file.
- * 
+ *
  * This function reads the input file line by line, identifies tokens using various
  * helper functions, and returns the next token. It handles whitespace, comments,
  * and preprocessor directives.
- * 
+ *
  * @param fp The file pointer to the input file.
  * @return Token_t* A pointer to the next token, or NULL if an error occurs.
  */
@@ -514,9 +514,9 @@ static Token_t *nextToken(FILE *fp) {
 
 /**
  * @brief Prints the details of a token.
- * 
+ *
  * This function outputs the line number, position, and ID of the given token.
- * 
+ *
  * @param token The token to be printed.
  */
 static void printToken(Token_t *token) {
@@ -530,10 +530,10 @@ static void printToken(Token_t *token) {
 
 /**
  * @brief The main function of the lexer.
- * 
+ *
  * This function initializes the string store and token store, processes the input file
  * to extract tokens, and prints each token. It handles cleanup before exiting.
- * 
+ *
  * @param argc The number of command-line arguments.
  * @param argv The array of command-line arguments.
  * @return int 0 on success, or a non-zero error code on failure.

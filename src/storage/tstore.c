@@ -4,9 +4,9 @@
  * @brief Token store implementation file
  * @version 0.1
  * @date 2024-09-08
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  */
 
 #include <stdio.h>
@@ -68,12 +68,12 @@ Token_t tstore_get(TokenIdx_t idx) {
     perror(tokenfile);
     return token;
   }
-  
+
   // Check if we're at EOF before trying to read
   if (feof(fptoken)) {
     return token;  // Return EOF token
   }
-  
+
   size_t read_count = fread(&token, sizeof(Token_t), 1, fptoken);
   if (read_count != 1) {
     // If we couldn't read a complete token, return EOF
@@ -82,7 +82,7 @@ Token_t tstore_get(TokenIdx_t idx) {
     token.file = 0;
     token.line = 0;
   }
-  
+
   return token;
 }
 
@@ -95,12 +95,12 @@ Token_t tstore_next(void) {
     perror(tokenfile);
     return token;
   }
-  
+
   // Check if we're at EOF before trying to read
   if (feof(fptoken)) {
     return token;  // Return EOF token
   }
-  
+
   size_t read_count = fread(&token, sizeof(Token_t), 1, fptoken);
   if (read_count != 1) {
     // If we couldn't read a complete token, return EOF
@@ -109,7 +109,7 @@ Token_t tstore_next(void) {
     token.file = 0;
     token.line = 0;
   }
-  
+
   return token;
 }
 

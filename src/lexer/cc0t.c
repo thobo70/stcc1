@@ -4,9 +4,9 @@
  * @brief test program for the sstore and tstore modules, reproduces the input of cc0
  * @version 0.1
  * @date 2024-09-01
- * 
+ *
  * @copyright Copyright (c) 2024
- * 
+ *
  */
 #include <stdio.h>
 

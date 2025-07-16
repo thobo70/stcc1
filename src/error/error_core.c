@@ -42,22 +42,22 @@ void error_core_init(const ErrorConfig_t* config) {
     if (g_initialized) {
         error_core_cleanup();
     }
-    
+
     memset(&g_error_state, 0, sizeof(ErrorState_t));
-    
+
     if (config) {
         g_error_state.config = *config;
     } else {
         g_error_state.config = error_get_default_config();
     }
-    
+
     // Default to stderr if no stream specified
     if (!g_error_state.config.output_stream) {
         g_error_state.config.output_stream = stderr;
     }
-    
+
     g_initialized = 1;
-    
+
     printf("[ERROR] Error handler initialized (max_errors=%d, max_warnings=%d)\n",
            g_error_state.config.max_errors, g_error_state.config.max_warnings);
 }
@@ -67,22 +67,22 @@ void error_core_init(const ErrorConfig_t* config) {
  */
 void error_core_cleanup(void) {
     if (!g_initialized) return;
-    
+
     // Free all error structures
     CompilerError_t* current = g_error_state.error_list;
     while (current) {
         CompilerError_t* next = current->next;
-        
+
         // Free dynamically allocated strings if any
         // (In this implementation, we assume strings are static or managed elsewhere)
-        
+
         free(current);
         current = next;
     }
-    
+
     printf("[ERROR] Error handler cleanup: %d errors, %d warnings total\n",
            g_error_state.total_errors, g_error_state.total_warnings);
-    
+
     memset(&g_error_state, 0, sizeof(ErrorState_t));
     g_initialized = 0;
 }
@@ -92,7 +92,7 @@ void error_core_cleanup(void) {
  */
 void error_core_reset(void) {
     if (!g_initialized) return;
-    
+
     // Free existing errors
     CompilerError_t* current = g_error_state.error_list;
     while (current) {
@@ -100,7 +100,7 @@ void error_core_reset(void) {
         free(current);
         current = next;
     }
-    
+
     // Reset counters but keep configuration
     ErrorConfig_t saved_config = g_error_state.config;
     memset(&g_error_state, 0, sizeof(ErrorState_t));
@@ -113,7 +113,7 @@ void error_core_reset(void) {
 SourceLocation_t error_create_location(TokenIdx_t token_idx) {
     SourceLocation_t location = {0};
     location.token_idx = token_idx;
-    
+
     if (token_idx != 0) {
         // Get token to extract file and line information
         Token_t token = tstore_get(token_idx);
@@ -122,7 +122,7 @@ SourceLocation_t error_create_location(TokenIdx_t token_idx) {
         location.column = 0;  // Column info not available in current token system
         location.line_text = NULL;  // Would need source file access
     }
-    
+
     return location;
 }
 
@@ -149,27 +149,27 @@ CompilerError_t* error_core_report(ErrorLevel_t level, ErrorCategory_t category,
                                   uint32_t error_code, const char* message,
                                   const char* suggestion, const char* stage_name,
                                   void* stage_context) {
-    
+
     if (!g_initialized) {
         fprintf(stderr, "ERROR: Error handler not initialized!\n");
         return NULL;
     }
-    
+
     // Prevent recursive errors
     if (g_error_state.in_error_handler) {
         fprintf(stderr, "ERROR: Recursive error in error handler!\n");
         return NULL;
     }
     g_error_state.in_error_handler = 1;
-    
+
     // Check if we should abort due to too many errors
-    if (level >= ERROR_ERROR && 
+    if (level >= ERROR_ERROR &&
         g_error_state.total_errors >= g_error_state.config.max_errors) {
         g_error_state.should_abort = 1;
         g_error_state.in_error_handler = 0;
         return NULL;
     }
-    
+
     // Allocate new error structure
     CompilerError_t* error = (CompilerError_t*)malloc(sizeof(CompilerError_t));
     if (!error) {
@@ -178,7 +178,7 @@ CompilerError_t* error_core_report(ErrorLevel_t level, ErrorCategory_t category,
         g_error_state.in_error_handler = 0;
         return NULL;
     }
-    
+
     // Initialize error structure
     memset(error, 0, sizeof(CompilerError_t));
     error->level = level;
@@ -188,21 +188,21 @@ CompilerError_t* error_core_report(ErrorLevel_t level, ErrorCategory_t category,
     error->suggestion = suggestion;
     error->stage_name = stage_name;
     error->stage_context = stage_context;
-    
+
     if (location) {
         error->location = *location;
     }
-    
+
     // Update statistics
     g_error_state.error_count[level]++;
     g_error_state.category_count[category]++;
-    
+
     if (level >= ERROR_ERROR) {
         g_error_state.total_errors++;
     } else if (level == ERROR_WARNING) {
         g_error_state.total_warnings++;
     }
-    
+
     // Add to error list
     if (!g_error_state.error_list) {
         g_error_state.error_list = error;
@@ -211,17 +211,17 @@ CompilerError_t* error_core_report(ErrorLevel_t level, ErrorCategory_t category,
         g_error_state.last_error->next = error;
         g_error_state.last_error = error;
     }
-    
+
     // Print error immediately if configured to do so
     error_core_print_error(error);
-    
+
     // Check for abort conditions
     if (level == ERROR_FATAL ||
         (level >= ERROR_ERROR && g_error_state.total_errors >= g_error_state.config.max_errors) ||
         (level == ERROR_WARNING && g_error_state.total_warnings >= g_error_state.config.max_warnings)) {
         g_error_state.should_abort = 1;
     }
-    
+
     g_error_state.in_error_handler = 0;
     return error;
 }
@@ -231,38 +231,38 @@ CompilerError_t* error_core_report(ErrorLevel_t level, ErrorCategory_t category,
  */
 void error_core_print_error(const CompilerError_t* error) {
     if (!error || !g_initialized) return;
-    
+
     FILE* out = g_error_state.config.output_stream;
-    
+
     // Error level prefix
     const char* level_names[] = {"INFO", "WARNING", "ERROR", "FATAL"};
-    const char* level_name = (error->level <= ERROR_FATAL) ? 
+    const char* level_name = (error->level <= ERROR_FATAL) ?
                             level_names[error->level] : "UNKNOWN";
-    
+
     // Print location information
     if (error->location.filename && error->location.line > 0) {
         fprintf(out, "%s:%u: ", error->location.filename, error->location.line);
     } else if (error->location.token_idx > 0) {
         fprintf(out, "token %u: ", error->location.token_idx);
     }
-    
+
     // Print error level and stage
     fprintf(out, "%s", level_name);
     if (error->stage_name) {
         fprintf(out, " [%s]", error->stage_name);
     }
     fprintf(out, ": ");
-    
+
     // Print error message
     fprintf(out, "%s", error->message ? error->message : "Unknown error");
-    
+
     // Print error code if available
     if (error->error_code > 0) {
         fprintf(out, " (E%u)", error->error_code);
     }
-    
+
     fprintf(out, "\n");
-    
+
     // Print source context if available
     if (g_error_state.config.show_source_context && error->location.line_text) {
         fprintf(out, "  %s\n", error->location.line_text);
@@ -270,7 +270,7 @@ void error_core_print_error(const CompilerError_t* error) {
             fprintf(out, "  %*s^\n", error->location.column - 1, "");
         }
     }
-    
+
     // Print suggestion if available
     if (g_error_state.config.show_suggestions && error->suggestion) {
         fprintf(out, "  Suggestion: %s\n", error->suggestion);
@@ -282,29 +282,29 @@ void error_core_print_error(const CompilerError_t* error) {
  */
 void error_core_print_summary(void) {
     if (!g_initialized) return;
-    
+
     FILE* out = g_error_state.config.output_stream;
-    
+
     fprintf(out, "\n=== Compilation Summary ===\n");
-    fprintf(out, "Errors: %d, Warnings: %d\n", 
+    fprintf(out, "Errors: %d, Warnings: %d\n",
             g_error_state.total_errors, g_error_state.total_warnings);
-    
+
     if (g_error_state.total_errors > 0 || g_error_state.total_warnings > 0) {
         fprintf(out, "Breakdown by category:\n");
-        
+
         const char* category_names[] = {
-            "Lexical", "Syntax", "Semantic", "Codegen", 
+            "Lexical", "Syntax", "Semantic", "Codegen",
             "Optimization", "Memory", "I/O", "Internal"
         };
-        
+
         for (int i = 0; i <= ERROR_INTERNAL; i++) {
             if (g_error_state.category_count[i] > 0) {
-                fprintf(out, "  %s: %d\n", category_names[i], 
+                fprintf(out, "  %s: %d\n", category_names[i],
                        g_error_state.category_count[i]);
             }
         }
     }
-    
+
     if (g_error_state.should_abort) {
         fprintf(out, "Compilation aborted due to errors.\n");
     } else if (g_error_state.total_errors == 0) {
@@ -323,7 +323,7 @@ int error_core_should_abort(void) {
  * @brief Get error count by level
  */
 int error_core_get_count(ErrorLevel_t level) {
-    return (g_initialized && level <= ERROR_FATAL) ? 
+    return (g_initialized && level <= ERROR_FATAL) ?
            g_error_state.error_count[level] : 0;
 }
 
