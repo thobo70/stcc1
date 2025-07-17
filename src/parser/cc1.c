@@ -121,11 +121,6 @@ static ASTNodeIdx_t create_ast_node(ASTNodeType type, TokenIdx_t token_idx) {
     node->ast.flags = AST_FLAG_PARSED;
     node->ast.type_idx = 0;
 
-    // Debug: track VAR_DECL creation
-    if (type == AST_VAR_DECL) {
-        printf("DEBUG: Creating VAR_DECL node %d\n", node->idx);
-    }
-
     return node->idx;
 }
 
@@ -468,11 +463,6 @@ ASTNodeIdx_t parse_program(void) {
             // Skip to next likely declaration start or advance at least one token
             Token_t token = next_token();
             if (token.id == T_EOF) break;
-
-            // Only print error if it's not a whitespace or comment token
-            if (token.id != T_EOF) {
-                fprintf(stderr, "Error: unexpected token ID %d\n", token.id);
-            }
             continue;
         }
 
@@ -532,6 +522,9 @@ static void parser_init(void) {
  * @brief Clean up parser resources
  */
 static void parser_cleanup(void) {
+    // Flush all cached nodes to storage before cleanup
+    HBEnd();
+    
     if (error_core_has_errors()) {
         error_core_print_summary();
     }
@@ -627,7 +620,6 @@ static TypeSpecifier_t parse_type_specifiers(void) {
                     // we missed in our switch statement
                     if (is_type_specifier_start(token.id)) {
                         // This is a bug - we should handle this token
-                        fprintf(stderr, "Warning: Unhandled type specifier token ID %d\n", token.id);
                         type.base_type = T_INT;  // Default fallback
                         type.is_valid = 1;
                         next_token();
@@ -719,37 +711,6 @@ int main(int argc, char *argv[]) {
     // Program parsing is considered successful if we reach this point
     // (AST index 0 is valid, and errors would have exited earlier)
     printf("Parsing completed successfully\n");
-
-    // Transfer AST nodes from HMapBuf to astore
-    printf("Transferring AST nodes to file...\n");
-    int transferred = 0;
-    
-    // Transfer only the actual nodes that were created, based on debugging
-    // We know from the debug output that only a few nodes are actually created
-    for (ASTNodeIdx_t idx = 1; idx <= 5; idx++) {  // Reduced range
-        HBNode *hb_node = HBGet(idx, HBMODE_AST);
-        if (hb_node && hb_node->ast.type != AST_FREE) {
-            printf("DEBUG: Transferring node %d, type %d\n", idx, hb_node->ast.type);
-            
-            ASTNode ast_node;
-            memset(&ast_node, 0, sizeof(ASTNode));
-            ast_node.type = hb_node->ast.type;
-            ast_node.children = hb_node->ast.children;
-            ast_node.binary = hb_node->ast.binary;
-            ast_node.unary = hb_node->ast.unary;
-            ast_node.conditional = hb_node->ast.conditional;
-            ast_node.compound = hb_node->ast.compound;
-            ast_node.call = hb_node->ast.call;
-            ast_node.token_idx = hb_node->ast.token_idx;
-            ast_node.type_idx = hb_node->ast.type_idx;
-
-            ASTNodeIdx_t result = astore_add(&ast_node);
-            if (result != 0) {
-                transferred++;
-            }
-        }
-    }
-    printf("Transferred %d AST nodes to file\n", transferred);
 
     // Clean up
     parser_cleanup();

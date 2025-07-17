@@ -14,6 +14,16 @@ STCC1 is a C compiler implementation designed with extreme low memory consumptio
 
 STCC1 implements a traditional multi-pass compiler architecture with disk-based intermediate storage to minimize memory usage. The compiler pipeline consists of several distinct stages:
 
+### Storage System
+STCC1 uses a sophisticated file-based storage system for extreme memory efficiency:
+- **String Store (sstore)**: Hash-based string deduplication across all stages
+- **Token Store (tstore)**: Persistent token stream storage
+- **AST Store (astore)**: Abstract Syntax Tree node storage with cross-references  
+- **Symbol Table (symtab)**: Symbol information with hierarchical scoping
+- **Hash Map Buffer (hmapbuf)**: LRU-based memory cache (100 nodes max)
+
+*See [STORAGE_ARCHITECTURE.md](STORAGE_ARCHITECTURE.md) for detailed documentation.*
+
 ### Stage 1: Lexical Analysis
 - **cc0** - Lexical Analyzer: Tokenizes C source code into a stream of tokens
 - **cc0t** - Token Viewer: Debug utility to inspect the generated token stream
