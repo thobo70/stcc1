@@ -345,29 +345,49 @@ int main(int argc, char *argv[]) {
     ASTNodeIdx_t current_idx = astore_getidx();
     printf("Current AST index: %d\n", current_idx);
 
-    // Limit output to prevent infinite loops or excessive output
-    int max_ast_nodes = (current_idx > 20) ? 20 : current_idx;
-
-    printf("Showing first %d AST nodes:\n", max_ast_nodes);
-    for (ASTNodeIdx_t i = 1; i <= max_ast_nodes; i++) {
-        ASTNode node = astore_get(i);
-        if (node.type != AST_FREE) {
+    if (current_idx > 1) {
+        printf("All AST Nodes (including FREE):\n");
+        
+        // Show all nodes including FREE ones to see the full picture
+        for (ASTNodeIdx_t i = 1; i < current_idx; i++) {
+            ASTNode node = astore_get(i);
             printf("[%d] %s", i, ast_type_to_string(node.type));
-            if (node.token_idx != 0) printf(" (token: %d)", node.token_idx);
-
-            // Print basic node info without recursion to avoid deep traversal
-            if (node.children.child1 != 0 || node.children.child2 != 0 ||
-                node.children.child3 != 0 || node.children.child4 != 0) {
-                printf(" children: %d, %d, %d, %d",
-                       node.children.child1, node.children.child2,
-                       node.children.child3, node.children.child4);
+            
+            if (node.type != AST_FREE) {
+                if (node.token_idx != 0) printf(" (token: %d)", node.token_idx);
+                
+                // Show specific structure based on node type
+                switch (node.type) {
+                    case AST_EXPR_BINARY_OP:
+                        printf(" left: %d, right: %d", node.binary.left, node.binary.right);
+                        break;
+                    case AST_EXPR_UNARY_OP:
+                        printf(" operand: %d", node.unary.operand);
+                        break;
+                    case AST_LIT_INTEGER:
+                        printf(" value: %ld", node.binary.value.long_value);
+                        break;
+                    case AST_EXPR_IDENTIFIER:
+                        printf(" name_pos: %d", node.binary.value.string_pos);
+                        break;
+                    case AST_STMT_COMPOUND:
+                        printf(" declarations: %d, statements: %d", 
+                               node.compound.declarations, node.compound.statements);
+                        break;
+                    default:
+                        if (node.children.child1 != 0 || node.children.child2 != 0 ||
+                            node.children.child3 != 0 || node.children.child4 != 0) {
+                            printf(" children: %d, %d, %d, %d",
+                                   node.children.child1, node.children.child2,
+                                   node.children.child3, node.children.child4);
+                        }
+                        break;
+                }
             }
             printf("\n");
         }
-    }
-
-    if (current_idx > max_ast_nodes) {
-        printf("... (%d total AST nodes, showing first %d)\n", current_idx, max_ast_nodes);
+    } else {
+        printf("No AST nodes to display\n");
     }
 
     // Print symbol table
