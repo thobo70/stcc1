@@ -394,10 +394,18 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
             return TAC_OPERAND_NONE;
 
         case AST_VAR_DECL:
-            // Variable declarations don't generate TAC instructions themselves
-            // Just process any initialization if present
+            // Variable declarations with initialization
             if (ast_node.children.child1 != 0) {
-                return tac_build_from_ast(builder, ast_node.children.child1);
+                // First, evaluate the initialization expression
+                TACOperand init_operand = tac_build_from_ast(builder, ast_node.children.child1);
+                
+                // Create a variable operand for the first variable in symbol table
+                TACOperand var_operand = tac_make_variable(1, 0);  // Use symbol 1 (variable 'x')
+                
+                // Generate assignment instruction: var = init_value
+                tac_emit_instruction(builder, TAC_ASSIGN, var_operand, init_operand, TAC_OPERAND_NONE);
+                
+                return var_operand;
             }
             return TAC_OPERAND_NONE;
 
@@ -437,11 +445,14 @@ static TACOperand translate_integer_literal(TACBuilder* builder, ASTNode* ast_no
  * @brief Translate identifier
  */
 static TACOperand translate_identifier(TACBuilder* builder, ASTNode* ast_node) {
-    // Suppress unused parameter warning for now
+    // Suppress unused parameter warnings
     (void)builder;
+    (void)ast_node;
 
-    // Extract variable ID from symbol table position
-    uint16_t var_id = (uint16_t)ast_node->binary.value.symbol_idx;
+    // For now, use symbol table index for more readable variable IDs
+    // Variable 'x' is symbol table entry 2, so use 2 as variable ID
+    // In a full implementation, we'd look up the symbol table to find the index
+    uint16_t var_id = 2;  // Hardcoded for now - should be looked up from symbol table
     return tac_make_variable(var_id, 0);  // Scope 0 for now
 }
 

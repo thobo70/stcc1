@@ -57,6 +57,9 @@ ASTNodeIdx_t parse_declaration(void);
 ASTNodeIdx_t parse_function_definition(void);
 ASTNodeIdx_t parse_statement(void);
 ASTNodeIdx_t parse_expression(void);
+ASTNodeIdx_t parse_assignment_expression(void);
+ASTNodeIdx_t parse_additive_expression(void);
+ASTNodeIdx_t parse_multiplicative_expression(void);
 ASTNodeIdx_t parse_primary_expression(void);
 
 // Additional function prototypes
@@ -165,7 +168,15 @@ ASTNodeIdx_t parse_primary_expression(void) {
 
         case T_LITINT: {
             next_token();
-            return create_ast_node(AST_LIT_INTEGER, token_idx);
+            ASTNodeIdx_t node_idx = create_ast_node(AST_LIT_INTEGER, token_idx);
+            if (node_idx) {
+                HBNode *node = HBGet(node_idx, HBMODE_AST);
+                // Extract integer value from string store
+                char *str = sstore_get(token.pos);
+                node->ast.binary.value.long_value = strtol(str, NULL, 0);
+                HBTouched(node);
+            }
+            return node_idx;
         }
 
         case T_LITSTRING: {
@@ -198,29 +209,104 @@ ASTNodeIdx_t parse_primary_expression(void) {
 }
 
 /**
- * @brief Parse expressions with left-associative binary operators
- * Fixed to handle associativity correctly (left-to-right for +, -, *, /)
+ * @brief Parse expressions with proper operator precedence
+ * Assignment has lower precedence than arithmetic operators
  */
 ASTNodeIdx_t parse_expression(void) {
-    // Parse the first operand
+    return parse_assignment_expression();
+}
+
+/**
+ * @brief Parse assignment expressions (lowest precedence)
+ * Right-associative: a = b = c becomes a = (b = c)
+ */
+ASTNodeIdx_t parse_assignment_expression(void) {
+    ASTNodeIdx_t left = parse_additive_expression();
+    if (!left) return 0;
+
+    Token_t token = peek_token();
+    if (token.id == T_ASSIGN) {
+        TokenIdx_t token_idx = tstore_getidx();
+        next_token(); // consume '='
+        
+        // Assignment is right-associative, so parse another assignment expression
+        ASTNodeIdx_t right = parse_assignment_expression();
+        if (!right) {
+            SourceLocation_t location = error_create_location(token_idx);
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             "Expected right operand after '='", "Check assignment syntax", "parser", NULL);
+            return left;
+        }
+
+        // Create assignment node
+        ASTNodeIdx_t assign_node = create_ast_node(AST_EXPR_ASSIGN, token_idx);
+        if (assign_node) {
+            HBNode *node = HBGet(assign_node, HBMODE_AST);
+            node->ast.binary.left = left;
+            node->ast.binary.right = right;
+        }
+        return assign_node;
+    }
+
+    return left;
+}
+
+/**
+ * @brief Parse additive expressions (+ and -)
+ * Left-associative: a + b + c becomes (a + b) + c
+ */
+ASTNodeIdx_t parse_additive_expression(void) {
+    ASTNodeIdx_t left = parse_multiplicative_expression();
+    if (!left) return 0;
+
+    while (1) {
+        Token_t token = peek_token();
+        if (token.id != T_PLUS && token.id != T_MINUS) {
+            break;
+        }
+
+        TokenIdx_t token_idx = tstore_getidx();
+        next_token(); // consume operator
+        
+        ASTNodeIdx_t right = parse_multiplicative_expression();
+        if (!right) {
+            SourceLocation_t location = error_create_location(token_idx);
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             "Expected right operand", "Check expression syntax", "parser", NULL);
+            return left;
+        }
+
+        // Create binary operation node
+        ASTNodeIdx_t op_node = create_ast_node(AST_EXPR_BINARY_OP, token_idx);
+        if (op_node) {
+            HBNode *node = HBGet(op_node, HBMODE_AST);
+            node->ast.binary.left = left;
+            node->ast.binary.right = right;
+        }
+        
+        left = op_node;
+    }
+
+    return left;
+}
+
+/**
+ * @brief Parse multiplicative expressions (* and /)
+ * Left-associative: a * b * c becomes (a * b) * c
+ */
+ASTNodeIdx_t parse_multiplicative_expression(void) {
     ASTNodeIdx_t left = parse_primary_expression();
     if (!left) return 0;
 
-    // Handle chains of binary operators with left-associativity
     while (1) {
         Token_t token = peek_token();
-        TokenIdx_t token_idx = tstore_getidx();
-
-        // Check if this is a binary operator we handle
-        if (token.id != T_PLUS && token.id != T_MINUS && token.id != T_MUL &&
-            token.id != T_DIV && token.id != T_ASSIGN && token.id != T_EQ &&
-            token.id != T_NEQ && token.id != T_LT && token.id != T_GT) {
-            break; // Not a binary operator, stop parsing
+        if (token.id != T_MUL && token.id != T_DIV) {
+            break;
         }
 
+        TokenIdx_t token_idx = tstore_getidx();
         next_token(); // consume operator
         
-        // Parse the right operand (just primary expression for left-associativity)
         ASTNodeIdx_t right = parse_primary_expression();
         if (!right) {
             SourceLocation_t location = error_create_location(token_idx);
@@ -237,7 +323,6 @@ ASTNodeIdx_t parse_expression(void) {
             node->ast.binary.right = right;
         }
         
-        // The result becomes the new left operand for the next iteration
         left = op_node;
     }
 
