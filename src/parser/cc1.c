@@ -203,23 +203,30 @@ ASTNodeIdx_t parse_primary_expression(void) {
 }
 
 /**
- * @brief Parse expressions with precedence
+ * @brief Parse expressions with left-associative binary operators
+ * Fixed to handle associativity correctly (left-to-right for +, -, *, /)
  */
 ASTNodeIdx_t parse_expression(void) {
-    // Simple expression parsing - can be enhanced with operator precedence
+    // Parse the first operand
     ASTNodeIdx_t left = parse_primary_expression();
     if (!left) return 0;
 
-    Token_t token = peek_token();
-    TokenIdx_t token_idx = tstore_getidx();
+    // Handle chains of binary operators with left-associativity
+    while (1) {
+        Token_t token = peek_token();
+        TokenIdx_t token_idx = tstore_getidx();
 
-    // Handle binary operators
-    if (token.id == T_PLUS || token.id == T_MINUS || token.id == T_MUL ||
-        token.id == T_DIV || token.id == T_ASSIGN || token.id == T_EQ ||
-        token.id == T_NEQ || token.id == T_LT || token.id == T_GT) {
+        // Check if this is a binary operator we handle
+        if (token.id != T_PLUS && token.id != T_MINUS && token.id != T_MUL &&
+            token.id != T_DIV && token.id != T_ASSIGN && token.id != T_EQ &&
+            token.id != T_NEQ && token.id != T_LT && token.id != T_GT) {
+            break; // Not a binary operator, stop parsing
+        }
 
         next_token(); // consume operator
-        ASTNodeIdx_t right = parse_expression();
+        
+        // Parse the right operand (just primary expression for left-associativity)
+        ASTNodeIdx_t right = parse_primary_expression();
         if (!right) {
             SourceLocation_t location = error_create_location(token_idx);
             error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
@@ -227,13 +234,16 @@ ASTNodeIdx_t parse_expression(void) {
             return left;
         }
 
+        // Create binary operation node
         ASTNodeIdx_t op_node = create_ast_node(AST_EXPR_BINARY_OP, token_idx);
         if (op_node) {
             HBNode *node = HBGet(op_node, HBMODE_AST);
             node->ast.binary.left = left;
             node->ast.binary.right = right;
         }
-        return op_node;
+        
+        // The result becomes the new left operand for the next iteration
+        left = op_node;
     }
 
     return left;
@@ -303,7 +313,19 @@ ASTNodeIdx_t parse_statement(void) {
 
             // Parse statements until '}'
             while (peek_token().id != T_RBRACE && peek_token().id != T_EOF) {
-                ASTNodeIdx_t stmt = parse_statement();
+                ASTNodeIdx_t stmt;
+                Token_t next_token_peek = peek_token();
+                
+                // If this looks like a declaration, handle it directly here
+                if (next_token_peek.id == T_INT || next_token_peek.id == T_CHAR || 
+                    next_token_peek.id == T_FLOAT || next_token_peek.id == T_DOUBLE || 
+                    next_token_peek.id == T_VOID) {
+                    // Parse variable declaration directly
+                    stmt = parse_declaration();
+                } else {
+                    // Parse as regular statement
+                    stmt = parse_statement();
+                }
                 if (!stmt) break;
                 // Link statements - simplified chaining
             }
