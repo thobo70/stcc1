@@ -2,6 +2,11 @@
 
 STCC1 is a C compiler implementation designed with extreme low memory consumption in mind. The project focuses on being able to compile C code in environments with severely constrained memory resources (target: <100KB RAM).
 
+## 📋 Project Governance
+- **[PROJECT_MANIFEST.md](PROJECT_MANIFEST.md)** - Core principles, standards, and development guidelines
+- **[DEVELOPMENT_CHECKLIST.md](DEVELOPMENT_CHECKLIST.md)** - Daily development workflow and quality gates
+- **Never weaken a test to make it pass** - Fix the code, maintain quality standards
+
 ## Key Features
 
 - **Ultra-Low Memory Footprint**: Custom memory management designed for <100KB RAM usage

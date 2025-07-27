@@ -86,10 +86,19 @@ HMapIdx_t HBGetIdx(HBMode_t mode) {
     HMapIdx_t idx = 0;
     switch (mode & ~HBMODE_MODIFIED) {
         case HBMODE_SYM:
-            idx = symtab_add(NULL);
+            {
+                // Create a default empty symbol entry
+                SymTabEntry default_sym = {0};
+                idx = symtab_add(&default_sym);
+            }
             break;
         case HBMODE_AST:
-            idx = astore_add(NULL);
+            {
+                // Create a default free AST node
+                ASTNode default_ast = {0};
+                default_ast.type = AST_FREE;
+                idx = astore_add(&default_ast);
+            }
             break;
         default:    // @todo: error handling
             break;
@@ -162,6 +171,15 @@ void HBTouched(HBNode *node) {
     if (node == NULL) {
         return;     // @todo: error handling
     }
+    
+    // Check if node is properly linked before manipulating
+    if (node->lprev == NULL || node->lnext == NULL) {
+        return;     // Node not properly initialized/linked
+    }
+    
+    // Mark node as modified when touched
+    node->mode |= HBMODE_MODIFIED;
+    
     if (hblast == node) {
         return;
     }

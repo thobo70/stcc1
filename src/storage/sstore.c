@@ -24,11 +24,19 @@ int sstoreidx = 0;
 
 int sstore_init(const char *fname) {
   sstorefname = fname;
-  sstorefd = fopen(sstorefname, "wb");
+  sstorefd = fopen(sstorefname, "w+b");  // Read/write binary mode
   if (sstorefd == NULL) {
     perror(sstorefname);
     return -1;
   }
+  
+  // Reset global state when initializing for writing
+  sstoreidx = 0;
+  for (int i = 0; i < SSIZE; i++) {
+    sstore[i].hash = 0;
+    sstore[i].pos = 0;
+  }
+  
   sstore_str("", 0);  // Add the empty string
   return 0;
 }
@@ -88,6 +96,11 @@ void sstore_close() {
 
 sstore_pos_t sstore_str(const char *str, sstore_len_t length) {
   if (sstorefd == NULL) {
+    return SSTORE_ERR;
+  }
+
+  // Validate input parameters
+  if (str == NULL) {
     return SSTORE_ERR;
   }
 

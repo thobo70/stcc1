@@ -9,6 +9,7 @@
  *
  */
 #include "hash.h"
+#include <stddef.h>  // For NULL
 
 #define TOP5BITS 0xF8000000
 #define INITIAL_HASH 0x811C9DC5  // Better initial hash value (FNV offset basis)
@@ -17,13 +18,18 @@
 /**
  * @brief calculate the hash value of a string
  *
- * @param str       string to hash
+ * @param str       string to hash (must not be NULL)
  * @param length    length of the string
  * @return hash_t   hash value
  */
 hash_t hash(const char *str, unsigned int length) {
   hash_t hash = INITIAL_HASH;  // start value
   unsigned int i;
+
+  // Validate input parameters
+  if (str == NULL) {
+    return INITIAL_HASH;  // Return consistent hash for NULL input
+  }
 
   hash ^= length;
   for (i = 0; i < length; i++) {

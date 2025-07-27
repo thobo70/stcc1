@@ -1,7 +1,4 @@
-int x;
-int y = 5;
-
 int main() {
-    x = 42;
+    int x = 1 + 2;
     return x;
 }

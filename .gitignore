@@ -5,3 +5,4 @@ tdir/
 .vscode/
 cleanconfigure.sh
 lint.log
+tests/temp/

@@ -13,6 +13,9 @@
 
 #include "../lexer/ctoken.h"
 
+// Error value for tstore operations
+#define TSTORE_ERR 0xFFFF
+
 
 /**
  * @brief Initialize the token store.
@@ -44,7 +47,7 @@ void tstore_close(void);
  *
  * @param token The token to add.
  * @return TokenIdx_t The index of the added token,
-                     or 0 on failure.
+                     or TSTORE_ERR on failure.
  */
 TokenIdx_t tstore_add(Token_t *token);
 
@@ -75,7 +78,8 @@ int tstore_setidx(TokenIdx_t idx);
 /**
  * @brief Get the current index in the token store.
  *
- * @return TokenIdx_t The current index in the token store.
+ * @return TokenIdx_t The current index in the token store,
+                     or TSTORE_ERR on failure.
  */
 TokenIdx_t tstore_getidx(void);
 

@@ -72,9 +72,8 @@ ASTNodeIdx_t astore_add(ASTNode *node) {
     if (fpast == NULL) {
         return 0;  // Indicate failure
     }
-    ASTNode empty = {0};  // Initialize empty node with default values
     if (node == NULL) {
-        node = &empty;
+        return 0;  // Fail gracefully for NULL input
     }
     if (fseek(fpast, 0, SEEK_END) != 0) {
         perror(astfile);
@@ -85,7 +84,8 @@ ASTNodeIdx_t astore_add(ASTNode *node) {
         perror(astfile);
         return 0;  // Indicate failure
     }
-    ASTNodeIdx_t idx = pos / sizeof(ASTNode);
+    // Use 1-based indexing (index 0 reserved for invalid/error)
+    ASTNodeIdx_t idx = (pos / sizeof(ASTNode)) + 1;
     if (fwrite(node, sizeof(ASTNode), 1, fpast) != 1) {
         perror(astfile);
         return 0;  // Indicate failure
@@ -95,10 +95,11 @@ ASTNodeIdx_t astore_add(ASTNode *node) {
 }
 
 ASTNodeIdx_t astore_update(ASTNodeIdx_t idx, ASTNode *node) {
-    if (fpast == NULL) {
+    if (fpast == NULL || idx == 0) {  // idx == 0 is invalid (1-based indexing)
         return 0;  // Indicate failure
     }
-    if (fseek(fpast, idx * sizeof(ASTNode), SEEK_SET) != 0) {
+    // Convert from 1-based to 0-based indexing for file positioning
+    if (fseek(fpast, (idx - 1) * sizeof(ASTNode), SEEK_SET) != 0) {
         perror(astfile);
         return 0;  // Indicate failure
     }
@@ -111,10 +112,11 @@ ASTNodeIdx_t astore_update(ASTNodeIdx_t idx, ASTNode *node) {
 
 ASTNode astore_get(ASTNodeIdx_t idx) {
     ASTNode node = {0};  // Initialize node with default values
-    if (fpast == NULL) {
+    if (fpast == NULL || idx == 0) {  // idx == 0 is invalid (1-based indexing)
         return node;
     }
-    if (fseek(fpast, idx * sizeof(ASTNode), SEEK_SET) != 0) {
+    // Convert from 1-based to 0-based indexing for file positioning
+    if (fseek(fpast, (idx - 1) * sizeof(ASTNode), SEEK_SET) != 0) {
         perror(astfile);
         return node;  // Return empty node on error
     }

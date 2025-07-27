@@ -18,7 +18,7 @@ static const char *symfile = NULL;
 
 int symtab_init(const char *filename) {
   symfile = filename;
-  fpsym = fopen(symfile, "wb");
+  fpsym = fopen(symfile, "w+b");  // Read/write binary mode
   if (fpsym == NULL) {
     perror(symfile);
     return 1;  // Indicate failure
@@ -55,9 +55,8 @@ SymIdx_t symtab_add(SymTabEntry *entry) {
   if (fpsym == NULL) {
     return 0;  // Indicate failure
   }
-  SymTabEntry empty = {0};  // Initialize empty entry with default values
   if (entry == NULL) {
-    entry = &empty;
+    return 0;  // Fail gracefully for NULL input, consistent with other storage systems
   }
   fseek(fpsym, 0, SEEK_END);
   SymIdx_t idx = ftell(fpsym) / sizeof(SymTabEntry);
@@ -65,6 +64,7 @@ SymIdx_t symtab_add(SymTabEntry *entry) {
     perror(symfile);
     return 0;  // Indicate failure
   }
+  fflush(fpsym);  // Ensure data is written to disk
   return idx + 1;  // Return 1-based index (0 reserved for failure)
 }
 

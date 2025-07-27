@@ -1,5 +1,8 @@
-int a;
+int add(int a, int b) {
+    return a + b;
+}
 
-int func() {
-    return 10;
+int main() {
+    int result = add(5, 3);
+    return result;
 }

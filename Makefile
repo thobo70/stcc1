@@ -273,12 +273,12 @@ test-basic: all
 	@echo ""
 	@echo "✓ All compiler components working correctly!"
 	@echo "📁 Detailed output files saved in $(TESTDIR)/"
-	@echo "🔍 Use 'make test' for extended testing"
+	@echo "🔍 Use 'make test-compiler' for extended testing"
 	@echo "🔧 Use 'cc2t $(TESTDIR)/tac.out' for detailed TAC analysis"
 	@echo "=== Test Complete ==="
 
 # Comprehensive test target
-test: all
+test-compiler: all
 	@echo "=== Comprehensive STCC1 Compiler Testing ==="
 	@echo ""
 	
@@ -419,3 +419,100 @@ test-cc2: all
 	@echo "✓ Pipeline test completed"
 	@echo "📁 Results saved in $(TESTDIR)/cc2_test*"
 	@echo "🔍 Use 'cc2t $(TESTDIR)/cc2_test.tac' for detailed TAC analysis"
+
+# Unity Test Framework Configuration
+UNITY_ROOT = Unity
+UNITY_SRC = $(UNITY_ROOT)/src
+TEST_ROOT = tests
+TEST_UNITY_SRC = $(TEST_ROOT)
+TEST_UNIT_SRC = $(TEST_ROOT)/unit
+TEST_INTEGRATION_SRC = $(TEST_ROOT)/integration
+TEST_OBJ = $(OBJDIR)/tests
+TEST_BIN = $(BINDIR)/test_runner
+
+# Unity source files
+UNITY_SRCS = $(UNITY_SRC)/unity.c
+
+# Test source files
+TEST_COMMON_SRCS = $(TEST_UNITY_SRC)/test_common.c
+TEST_UNIT_SRCS = $(TEST_UNIT_SRC)/test_simple.c
+TEST_INTEGRATION_SRCS = $(TEST_INTEGRATION_SRC)/test_integration_simple.c
+
+# Edge case test files (aggressive testing following PROJECT_MANIFEST.md)
+TEST_EDGE_CASE_SRCS = $(TEST_UNIT_SRC)/test_storage_edge_cases.c \
+                      $(TEST_UNIT_SRC)/test_hmapbuf_edge_cases.c \
+                      $(TEST_UNIT_SRC)/test_lexer_edge_cases.c \
+                      $(TEST_UNIT_SRC)/test_parser_edge_cases.c
+
+TEST_MAIN_SRC = $(TEST_UNITY_SRC)/test_main.c
+
+# All test sources (includes edge case tests)
+ALL_TEST_SRCS = $(UNITY_SRCS) $(TEST_COMMON_SRCS) $(TEST_UNIT_SRCS) $(TEST_INTEGRATION_SRCS) $(TEST_EDGE_CASE_SRCS) $(TEST_MAIN_SRC)
+
+# Test object files
+TEST_OBJS = $(ALL_TEST_SRCS:%.c=$(TEST_OBJ)/%.o)
+
+# Compiler component object files needed for tests (includes storage)
+COMPONENT_OBJS = $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/tstore.o \
+                 $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o
+
+# Test flags (less strict than main build to work with Unity framework)
+TEST_CFLAGS = -g -Og -Wall -Wextra -Werror -Wformat=2 -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wundef -std=c99 -D_GNU_SOURCE -I$(UNITY_SRC) -I$(TEST_ROOT) -I$(SRCDIR)
+
+# Create test object directory
+$(TEST_OBJ):
+	mkdir -p $(TEST_OBJ)
+	mkdir -p $(TEST_OBJ)/$(UNITY_SRC)
+	mkdir -p $(TEST_OBJ)/$(TEST_UNITY_SRC)
+	mkdir -p $(TEST_OBJ)/$(TEST_UNIT_SRC)
+	mkdir -p $(TEST_OBJ)/$(TEST_INTEGRATION_SRC)
+
+# Test object file rules
+$(TEST_OBJ)/%.o: %.c | $(TEST_OBJ)
+	$(CC) $(TEST_CFLAGS) -c -o $@ $<
+
+# Build test runner
+$(TEST_BIN): $(TEST_OBJS) $(COMPONENT_OBJS) | $(BINDIR)
+	$(CC) $(TEST_CFLAGS) -o $@ $^
+
+# Build and run Unity tests
+test: $(TEST_BIN)
+	@echo "=== Running STCC1 Unity Test Suite ==="
+	mkdir -p $(TESTDIR)/temp
+	$(TEST_BIN)
+
+# Build tests without running
+test-build: $(TEST_BIN)
+	@echo "Test runner built: $(TEST_BIN)"
+
+# Clean test artifacts
+test-clean:
+	rm -rf $(TEST_OBJ) $(TEST_BIN) $(TESTDIR)/temp
+
+# Run only unit tests
+test-unit: $(TEST_BIN)
+	@echo "=== Running Unit Tests Only ==="
+	mkdir -p $(TESTDIR)/temp
+	$(TEST_BIN) --unit
+
+# Run only integration tests  
+test-integration: $(TEST_BIN)
+	@echo "=== Running Integration Tests Only ==="
+	mkdir -p $(TESTDIR)/temp
+	$(TEST_BIN) --integration
+
+# Show test help
+test-help:
+	@echo "Available test targets:"
+	@echo "  test             - Build and run Unity unit/integration tests"
+	@echo "  test-build       - Build test runner without running"
+	@echo "  test-unit        - Run only unit tests"
+	@echo "  test-integration - Run only integration tests"
+	@echo "  test-clean       - Clean test build artifacts"
+	@echo "  test-basic       - Run basic compiler pipeline test"
+	@echo "  test-compiler    - Run comprehensive compiler testing"
+	@echo "  test-cc2         - Test TAC generation pipeline"
+	@echo "  test-help        - Show this help"
+
+# Add test targets to phony
+.PHONY: test test-build test-clean test-unit test-integration test-help test-basic test-compiler test-cc2

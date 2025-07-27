@@ -18,7 +18,7 @@ const char *tokenfile = NULL;
 
 int tstore_init(const char *filename) {
   tokenfile = filename;
-  fptoken = fopen(tokenfile, "wb");
+  fptoken = fopen(tokenfile, "w+b");  // Read/write binary mode
   if (fptoken == NULL) {
     perror(tokenfile);
     return 1;  // Indicate failure
@@ -47,15 +47,19 @@ void tstore_close(void) {
 
 TokenIdx_t tstore_add(Token_t *token) {
   if (fptoken == NULL) {
-    return 1;  // Indicate failure
+    return TSTORE_ERR;  // Indicate not initialized
+  }
+  if (token == NULL) {
+    return TSTORE_ERR;  // Indicate invalid input
   }
   fseek(fptoken, 0, SEEK_END);
   TokenIdx_t idx = ftell(fptoken) / sizeof(Token_t);
   if (fwrite(token, sizeof(Token_t), 1, fptoken) != 1) {
     perror(tokenfile);
-    return 1;  // Indicate failure
+    return TSTORE_ERR;  // Indicate write failure
   }
-  return idx;  // Indicate success by returning the index
+  fflush(fptoken);  // Ensure data is written to disk
+  return idx;  // Return 0-based indexing (0, 1, 2, ...)
 }
 
 Token_t tstore_get(TokenIdx_t idx) {
@@ -63,7 +67,7 @@ Token_t tstore_get(TokenIdx_t idx) {
   if (fptoken == NULL) {
     return token;
   }
-  fseek(fptoken, idx * sizeof(Token_t), SEEK_SET);
+  fseek(fptoken, idx * sizeof(Token_t), SEEK_SET);  // Use 0-based indexing
   if (ferror(fptoken)) {
     perror(tokenfile);
     return token;
@@ -123,7 +127,7 @@ int tstore_setidx(TokenIdx_t idx) {
 
 TokenIdx_t tstore_getidx(void) {
   if (fptoken == NULL) {
-    return 1;  // Indicate failure
+    return TSTORE_ERR;  // Indicate not initialized
   }
   return ftell(fptoken) / sizeof(Token_t);
 }
