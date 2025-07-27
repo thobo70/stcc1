@@ -10,6 +10,29 @@
  * - FIX the code, not the test
  * - Test memory management edge cases
  * - Break weak LRU implementations
+ * 
+ * CRITICAL INTERFACE DISCOVERIES FROM DEBUGGING:
+ * 
+ * 1. API DESIGN CONSTRAINTS:
+ *    - node->idx is IMMUTABLE after creation - never modify manually!
+ *    - HBGet() ALWAYS returns a node object (never NULL)
+ *    - Index 0 is invalid but handled gracefully (returns empty data)
+ *    - Storage systems must be initialized before HBNew()/HBGet()
+ * 
+ * 2. LRU CACHE INVARIANTS:
+ *    - lnext/lprev are NEVER NULL for active nodes (segfault risk!)
+ *    - HBTouched() requires properly linked nodes
+ *    - Nodes cycle: free -> LRU -> victim -> reused
+ * 
+ * 3. STORAGE INTEGRATION:
+ *    - astore/symtab use 1-based indexing (0 = invalid)
+ *    - Storage functions gracefully handle NULL/invalid inputs
+ *    - HBGetIdx() creates valid default entries (not NULL)
+ * 
+ * 4. TEST METHODOLOGY:
+ *    - Test API behavior, not internal implementation details
+ *    - Focus on boundary conditions and error handling
+ *    - Verify graceful degradation for invalid inputs
  */
 
 #include "unity.h"

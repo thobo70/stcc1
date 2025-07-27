@@ -68,6 +68,21 @@ void astore_close(void) {
     }
 }
 
+/**
+ * @brief Add a new AST node to persistent storage
+ * 
+ * Appends the AST node to the end of the storage file and returns its 1-based index.
+ * This is the primary allocation interface for the hmapbuf cache system.
+ * 
+ * @param node Pointer to ASTNode to store (cannot be NULL)
+ * @return 1-based index of stored node, or 0 on failure
+ * 
+ * @note Discovery: Uses 1-based indexing - index 0 is reserved for invalid/error
+ * @note Discovery: Returns 0 for NULL input (graceful failure handling)
+ * @note Discovery: Critical for HBGetIdx() in hmapbuf - must accept valid default nodes
+ * @note Discovery: Always appends to end of file for sequential allocation
+ * @note Discovery: Flushes immediately to ensure persistence
+ */
 ASTNodeIdx_t astore_add(ASTNode *node) {
     if (fpast == NULL) {
         return 0;  // Indicate failure
@@ -94,6 +109,20 @@ ASTNodeIdx_t astore_add(ASTNode *node) {
     return idx;  // Indicate success by returning the ID
 }
 
+/**
+ * @brief Update an existing AST node in storage
+ * 
+ * Overwrites the AST node at the specified index with new data.
+ * Used by hmapbuf's write-back cache mechanism (HBStore).
+ * 
+ * @param idx 1-based index of node to update (0 is invalid)
+ * @param node Pointer to new ASTNode data
+ * @return The index on success, 0 on failure
+ * 
+ * @note Discovery: Validates idx != 0 (1-based indexing)
+ * @note Discovery: Converts to 0-based file positioning internally
+ * @note Discovery: Critical for cache write-back in HBMODE_MODIFIED nodes
+ */
 ASTNodeIdx_t astore_update(ASTNodeIdx_t idx, ASTNode *node) {
     if (fpast == NULL || idx == 0) {  // idx == 0 is invalid (1-based indexing)
         return 0;  // Indicate failure
@@ -110,6 +139,21 @@ ASTNodeIdx_t astore_update(ASTNodeIdx_t idx, ASTNode *node) {
     return idx;  // Indicate success by returning the ID
 }
 
+/**
+ * @brief Retrieve an AST node from storage by index
+ * 
+ * Loads an AST node from the specified 1-based index. Returns a default
+ * zero-initialized node for invalid indices or errors.
+ * 
+ * @param idx 1-based index of node to retrieve (0 is invalid)
+ * @return ASTNode structure (zero-initialized if invalid/error)
+ * 
+ * @note Discovery: ALWAYS returns a valid ASTNode structure (never fails)
+ * @note Discovery: Index 0 returns default/empty node (graceful handling)
+ * @note Discovery: Critical for HBLoad() cache-miss handling
+ * @note Discovery: Zero-initialized node has type=0, which is safe default
+ * @note Discovery: Converts to 0-based file positioning internally
+ */
 ASTNode astore_get(ASTNodeIdx_t idx) {
     ASTNode node = {0};  // Initialize node with default values
     if (fpast == NULL || idx == 0) {  // idx == 0 is invalid (1-based indexing)

@@ -42,6 +42,18 @@ static HBNode *hblast = 0;
 
 
 
+/**
+ * @brief Store a modified node's data to persistent storage
+ * 
+ * Writes the node's data back to the appropriate storage system (symtab or astore)
+ * if the node has been modified. This is part of the write-back caching mechanism.
+ * 
+ * @param node The node to store (can be NULL - will be ignored)
+ * 
+ * @note Only stores if node is modified (HBMODE_MODIFIED flag set)
+ * @note Clears the HBMODE_MODIFIED flag after storing
+ * @note Discovery: Critical for data persistence in LRU cache system
+ */
 void HBStore(HBNode *node) {
     if (node == NULL) {
         return;     // @todo: error handling
@@ -64,6 +76,18 @@ void HBStore(HBNode *node) {
 
 
 
+/**
+ * @brief Load a node's data from persistent storage
+ * 
+ * Reads the node's data from the appropriate storage system (symtab or astore)
+ * based on the node's mode and index. This is part of the lazy loading mechanism.
+ * 
+ * @param node The node to load data into (can be NULL - will be ignored)
+ * 
+ * @note Clears the HBMODE_MODIFIED flag after loading
+ * @note Discovery: Essential for cache-miss handling in LRU system
+ * @note Discovery: Storage systems must be initialized before calling this
+ */
 void HBLoad(HBNode *node) {
     if (node == NULL) {
         return;     // @todo: error handling
@@ -82,6 +106,20 @@ void HBLoad(HBNode *node) {
 }
 
 
+/**
+ * @brief Allocate a new storage index for the specified mode
+ * 
+ * Creates a default entry in the appropriate storage system and returns its index.
+ * This function is crucial for creating new nodes with valid storage backing.
+ * 
+ * @param mode The mode (HBMODE_SYM or HBMODE_AST) to allocate storage for
+ * @return The allocated storage index, or 0 if allocation failed
+ * 
+ * @note Discovery: Must create valid default entries, not pass NULL to storage systems
+ * @note Discovery: For AST mode, creates AST_FREE nodes; for SYM mode, creates empty symbols
+ * @note Discovery: Storage systems (astore/symtab) must be initialized before calling
+ * @note Discovery: Returns 0 on failure, which is treated as invalid index by callers
+ */
 HMapIdx_t HBGetIdx(HBMode_t mode) {
     HMapIdx_t idx = 0;
     switch (mode & ~HBMODE_MODIFIED) {
@@ -135,6 +173,18 @@ HBNode *HBFind(HMapIdx_t idx, HBMode_t mode) {
 
 
 
+/**
+ * @brief Add a node to the hash table for fast index-based lookup
+ * 
+ * Inserts the node into the hash table bucket determined by HMAP_IDX(node->idx).
+ * Uses chaining to handle hash collisions via hnext/hprev pointers.
+ * 
+ * @param node The node to add to hash table (can be NULL - will be ignored)
+ * 
+ * @note Discovery: Hash table uses chaining for collision resolution
+ * @note Discovery: hnext/hprev are for hash table, lnext/lprev are for LRU list
+ * @note Discovery: Node is inserted at head of bucket chain for O(1) insertion
+ */
 void HBAdd(HBNode *node) {
     if (node == NULL) {
         return;     // @todo: error handling
@@ -149,6 +199,18 @@ void HBAdd(HBNode *node) {
 
 
 
+/**
+ * @brief Remove a node from the hash table
+ * 
+ * Removes the node from its hash table bucket, updating the chain pointers
+ * to maintain the linked list integrity.
+ * 
+ * @param node The node to remove from hash table (can be NULL - will be ignored)
+ * 
+ * @note Discovery: Must update bucket head pointer if removing first node
+ * @note Discovery: Clears hnext/hprev but preserves lnext/lprev (LRU list intact)
+ * @note Discovery: Called when node is being reused with different index
+ */
 void HBRemove(HBNode *node) {
     if (node == NULL) {
         return;     // @todo: error handling
@@ -167,6 +229,21 @@ void HBRemove(HBNode *node) {
 
 
 
+/**
+ * @brief Mark a node as recently used and move it to the front of LRU list
+ * 
+ * This is the core LRU mechanism. When a node is accessed, it's moved to become
+ * the most recently used (hblast). Also marks the node as modified.
+ * 
+ * @param node The node that was accessed (can be NULL - will be ignored)
+ * 
+ * @note Discovery: CRITICAL - Node must be properly linked (lprev/lnext != NULL)
+ * @note Discovery: Segmentation fault occurred when node->lprev was NULL
+ * @note Discovery: Node->idx should NEVER be modified after creation - immutable!
+ * @note Discovery: Sets HBMODE_MODIFIED flag to track changes
+ * @note Discovery: Handles both free list and LRU list node movement
+ * @note Discovery: Creates circular linked list when hblast is NULL (first node)
+ */
 void HBTouched(HBNode *node) {
     if (node == NULL) {
         return;     // @todo: error handling
@@ -224,6 +301,22 @@ void HBEnd(void) {
 
 
 
+/**
+ * @brief Create a new node or reuse an existing one for the specified mode
+ * 
+ * Implements the LRU cache allocation policy. First tries to find a compatible
+ * node from the free list, otherwise takes the least recently used node.
+ * 
+ * @param mode The mode for the new node (HBMODE_SYM or HBMODE_AST)
+ * @return Pointer to allocated node (never NULL in normal operation)
+ * 
+ * @note Discovery: Prefers reusing nodes of the same mode for efficiency
+ * @note Discovery: Falls back to any free node if no matching mode found
+ * @note Discovery: Takes LRU node if no free nodes available
+ * @note Discovery: Always calls HBGetIdx() to allocate storage index
+ * @note Discovery: Requires storage systems to be initialized first
+ * @note Discovery: AST_FREE check is heuristic for node reusability
+ */
 HBNode *HBNew(HBMode_t mode) {
     HBNode *node = hbfree;
     if (node != NULL) {
@@ -273,6 +366,22 @@ HBNode *HBEmpty(void) {
 
 
 
+/**
+ * @brief Get a node by index, creating it if it doesn't exist
+ * 
+ * This is the main cache interface. First checks if the node exists in cache,
+ * if not, creates a new node and loads its data from storage.
+ * 
+ * @param idx The storage index to retrieve
+ * @param mode The expected mode (HBMODE_SYM or HBMODE_AST)
+ * @return Pointer to the node (never NULL - always returns a node object)
+ * 
+ * @note Discovery: ALWAYS returns a node object, even for invalid indices
+ * @note Discovery: For index 0 (invalid), returns node with default/empty data
+ * @note Discovery: Implements cache-miss handling via HBEmpty() + HBLoad()
+ * @note Discovery: Storage systems handle invalid indices gracefully
+ * @note Discovery: Critical for implementing transparent caching layer
+ */
 HBNode *HBGet(HMapIdx_t idx, HBMode_t mode) {
     HBNode *node = HBFind(idx, mode);
     if (node != NULL) {

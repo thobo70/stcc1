@@ -51,6 +51,21 @@ void symtab_close(void) {
 
 
 
+/**
+ * @brief Add a new symbol table entry to persistent storage
+ * 
+ * Appends the symbol entry to the end of the storage file and returns its 1-based index.
+ * This is the primary allocation interface for symbol storage in hmapbuf.
+ * 
+ * @param entry Pointer to SymTabEntry to store (cannot be NULL)
+ * @return 1-based index of stored entry, or 0 on failure
+ * 
+ * @note Discovery: Uses 1-based indexing - index 0 is reserved for invalid/error
+ * @note Discovery: Returns 0 for NULL input (graceful failure handling)
+ * @note Discovery: Critical for HBGetIdx() in hmapbuf HBMODE_SYM mode
+ * @note Discovery: Always appends to end of file for sequential allocation
+ * @note Discovery: Flushes immediately to ensure persistence
+ */
 SymIdx_t symtab_add(SymTabEntry *entry) {
   if (fpsym == NULL) {
     return 0;  // Indicate failure
@@ -70,6 +85,20 @@ SymIdx_t symtab_add(SymTabEntry *entry) {
 
 
 
+/**
+ * @brief Update an existing symbol table entry in storage
+ * 
+ * Overwrites the symbol entry at the specified index with new data.
+ * Used by hmapbuf's write-back cache mechanism (HBStore).
+ * 
+ * @param idx 1-based index of entry to update (0 is invalid)
+ * @param entry Pointer to new SymTabEntry data
+ * @return The index on success, 0 on failure
+ * 
+ * @note Discovery: Validates idx != 0 (1-based indexing)
+ * @note Discovery: Converts to 0-based file positioning internally
+ * @note Discovery: Critical for cache write-back in HBMODE_MODIFIED nodes
+ */
 SymIdx_t symtab_update(SymIdx_t idx, SymTabEntry *entry) {
   if (fpsym == NULL || idx == 0) {
     return 0;  // Indicate failure
@@ -84,6 +113,21 @@ SymIdx_t symtab_update(SymIdx_t idx, SymTabEntry *entry) {
 
 
 
+/**
+ * @brief Retrieve a symbol table entry from storage by index
+ * 
+ * Loads a symbol entry from the specified 1-based index. Returns a default
+ * zero-initialized entry for invalid indices or errors.
+ * 
+ * @param idx 1-based index of entry to retrieve (0 is invalid)
+ * @return SymTabEntry structure (zero-initialized if invalid/error)
+ * 
+ * @note Discovery: ALWAYS returns a valid SymTabEntry structure (never fails)
+ * @note Discovery: Index 0 returns default/empty entry (graceful handling)
+ * @note Discovery: Critical for HBLoad() cache-miss handling in HBMODE_SYM
+ * @note Discovery: Zero-initialized entry is safe default state
+ * @note Discovery: Converts to 0-based file positioning internally
+ */
 SymTabEntry symtab_get(SymIdx_t idx) {
   SymTabEntry entry = {0};  // Initialize entry with default values
   if (fpsym == NULL || idx == 0) {
