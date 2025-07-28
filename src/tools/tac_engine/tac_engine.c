@@ -388,24 +388,35 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
 
 tac_engine_error_t tac_execute_return(tac_engine_t* engine,
                                      const TACInstruction* instruction) {
-    (void)instruction; // Unused for now
-    
-    // Pop return address from call stack
-    if (!engine->call_stack) {
-        tac_set_error(engine, TAC_ENGINE_ERR_STACK_UNDERFLOW,
-                     "Return with empty call stack");
-        return TAC_ENGINE_ERR_STACK_UNDERFLOW;
+    // Handle return value if present
+    if (instruction->operand1.type != TAC_OP_NONE) {
+        // Store return value in temp 0 for retrieval by tests
+        tac_value_t return_value;
+        tac_engine_error_t err = tac_eval_operand(engine, &instruction->operand1, &return_value);
+        if (err == TAC_ENGINE_OK) {
+            engine->temporaries[0] = return_value;
+        }
     }
+    
+    // Check if we're in a function call (have call stack)
+    if (engine->call_stack) {
+        // Pop return address from call stack
+        tac_stack_frame_t* frame = engine->call_stack;
+        engine->pc = frame->return_address;
+        engine->call_stack = frame->prev;
+        engine->call_depth--;
 
-    tac_stack_frame_t* frame = engine->call_stack;
-    engine->pc = frame->return_address;
-    engine->call_stack = frame->prev;
-    engine->call_depth--;
-
-    free(frame->locals);
-    free(frame);
-
-    return TAC_ENGINE_OK;
+        free(frame->locals);
+        free(frame);
+        
+        return TAC_ENGINE_OK;
+    } else {
+        // Top-level return - finish program execution
+        engine->state = TAC_ENGINE_FINISHED;
+        // Set PC to end of program to stop execution
+        engine->pc = engine->instruction_count;
+        return TAC_ENGINE_OK;
+    }
 }
 
 tac_engine_error_t tac_push_frame(tac_engine_t* engine,

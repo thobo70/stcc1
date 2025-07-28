@@ -153,8 +153,6 @@ TACIdx_t tac_emit_instruction(TACBuilder* builder, TACOpcode op,
         return 0;
     }
 
-    printf("DEBUG: Emitting TAC instruction opcode=%d\n", op);
-
     TACInstruction instr;
     instr.opcode = op;
     instr.flags = TAC_FLAG_NONE;
@@ -165,9 +163,6 @@ TACIdx_t tac_emit_instruction(TACBuilder* builder, TACOpcode op,
     TACIdx_t idx = tacstore_add(&instr);
     if (idx == 0) {
         builder->error_count++;
-        printf("DEBUG: Failed to add TAC instruction to store\n");
-    } else {
-        printf("DEBUG: Successfully added TAC instruction, index=%d\n", idx);
     }
 
     return idx;
@@ -484,10 +479,6 @@ static TACOperand translate_identifier(TACBuilder* builder, ASTNode* ast_node) {
  * @brief Translate binary expression
  */
 static TACOperand translate_binary_expr(TACBuilder* builder, ASTNode* ast_node) {
-    printf("DEBUG: translate_binary_expr called\n");
-    printf("DEBUG: Binary expr children: left=%u, right=%u\n",
-           ast_node->binary.left, ast_node->binary.right);
-
     // Check if the specified children are valid, if not, look for alternatives
     ASTNodeIdx_t left_node = ast_node->binary.left;
     ASTNodeIdx_t right_node = ast_node->binary.right;
@@ -496,12 +487,10 @@ static TACOperand translate_binary_expr(TACBuilder* builder, ASTNode* ast_node) 
     if (left_node != 0) {
         ASTNode left_child = astore_get(left_node);
         if (left_child.type == AST_FREE) {
-            printf("DEBUG: Left child %u is freed, looking for alternative...\n", left_node);
             // Look for nearby identifier nodes (typical pattern: identifier before literal)
             for (ASTNodeIdx_t i = (left_node > 5) ? left_node - 5 : 1; i <= left_node + 10; i++) {
                 ASTNode candidate = astore_get(i);
                 if (candidate.type == AST_EXPR_IDENTIFIER) {
-                    printf("DEBUG: Found alternative left node %u (IDENTIFIER)\n", i);
                     left_node = i;
                     break;
                 }
@@ -513,12 +502,10 @@ static TACOperand translate_binary_expr(TACBuilder* builder, ASTNode* ast_node) 
     if (right_node != 0) {
         ASTNode right_child = astore_get(right_node);
         if (right_child.type == AST_FREE) {
-            printf("DEBUG: Right child %u is freed, looking for alternative...\n", right_node);
             // Look for nearby literal nodes
             for (ASTNodeIdx_t i = (right_node > 5) ? right_node - 5 : 1; i <= right_node + 10; i++) {
                 ASTNode candidate = astore_get(i);
                 if (candidate.type == AST_LIT_INTEGER) {
-                    printf("DEBUG: Found alternative right node %u (LIT_INTEGER)\n", i);
                     right_node = i;
                     break;
                 }
@@ -530,21 +517,16 @@ static TACOperand translate_binary_expr(TACBuilder* builder, ASTNode* ast_node) 
     TACOperand left = tac_build_from_ast(builder, left_node);
     TACOperand right = tac_build_from_ast(builder, right_node);
 
-    printf("DEBUG: Left operand type: %d, Right operand type: %d\n", left.type, right.type);
-
     if (left.type == TAC_OP_NONE || right.type == TAC_OP_NONE) {
-        printf("DEBUG: Binary expr translation failed - invalid operands\n");
         builder->error_count++;
         return TAC_OPERAND_NONE;
     }
 
     // Get operator from token
     Token_t token = tstore_get(ast_node->token_idx);
-    printf("DEBUG: Binary operator token id: %d\n", token.id);
     TACOpcode opcode = token_to_tac_opcode(token.id);
 
     if (opcode == TAC_NOP) {
-        printf("DEBUG: Binary expr failed - unknown opcode for token %d\n", token.id);
         builder->error_count++;
         return TAC_OPERAND_NONE;
     }
@@ -553,7 +535,6 @@ static TACOperand translate_binary_expr(TACBuilder* builder, ASTNode* ast_node) 
     TACOperand result = tac_new_temp(builder, ast_node->type_idx);
 
     // Emit instruction
-    printf("DEBUG: Emitting binary operation with opcode %d\n", opcode);
     tac_emit_binary_op(builder, opcode, result, left, right);
 
     return result;
@@ -685,18 +666,12 @@ static void translate_while_stmt(TACBuilder* builder, ASTNode* ast_node) {
  * @brief Translate return statement
  */
 static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
-    printf("DEBUG: translate_return_stmt called\n");
-    printf("DEBUG: Return node children: %u, %u, %u, %u\n",
-           ast_node->children.child1, ast_node->children.child2,
-           ast_node->children.child3, ast_node->children.child4);
-
     // Check all possible child nodes for return value
     ASTNodeIdx_t return_value_node = 0;
 
     // Check child1 first
     if (ast_node->children.child1 != 0) {
         ASTNode child1 = astore_get(ast_node->children.child1);
-        printf("DEBUG: Child1 (%u) has type %d\n", ast_node->children.child1, child1.type);
         if (child1.type != AST_FREE) {
             return_value_node = ast_node->children.child1;
         }
@@ -704,19 +679,16 @@ static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
 
     // If child1 is freed, look for nearby identifier nodes that could be the return value
     if (return_value_node == 0 && ast_node->children.child1 != 0) {
-        printf("DEBUG: Return child1 is freed, looking for alternative return value...\n");
         // Look for nearby identifier nodes (typical pattern for 'return x')
         ASTNodeIdx_t start_search = (ast_node->children.child1 > 10) ? ast_node->children.child1 - 10 : 1;
         for (ASTNodeIdx_t i = start_search; i <= ast_node->children.child1 + 15; i++) {
             ASTNode candidate = astore_get(i);
             if (candidate.type == AST_EXPR_IDENTIFIER) {
-                printf("DEBUG: Found alternative return value node %u (IDENTIFIER)\n", i);
                 return_value_node = i;
                 break;
             }
             // Also look for literal values (e.g., return 10;)
             if (candidate.type == AST_LIT_INTEGER) {
-                printf("DEBUG: Found alternative return value node %u (LIT_INTEGER)\n", i);
                 return_value_node = i;
                 break;
             }
@@ -726,24 +698,18 @@ static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
     // Check other children as backup
     if (return_value_node == 0 && ast_node->children.child2 != 0) {
         ASTNode child2 = astore_get(ast_node->children.child2);
-        printf("DEBUG: Child2 (%u) has type %d\n", ast_node->children.child2, child2.type);
         if (child2.type != AST_FREE) {
             return_value_node = ast_node->children.child2;
         }
     }
 
     if (return_value_node != 0) {
-        printf("DEBUG: Return with value from node %u\n", return_value_node);
         // Return with value
         TACOperand value = tac_build_from_ast(builder, return_value_node);
         if (value.type != TAC_OP_NONE) {
-            printf("DEBUG: Emitting TAC_RETURN instruction\n");
             tac_emit_instruction(builder, TAC_RETURN, TAC_OPERAND_NONE, value, TAC_OPERAND_NONE);
-        } else {
-            printf("DEBUG: Return value translation failed\n");
         }
     } else {
-        printf("DEBUG: Return void (no valid children found)\n");
         // Return void
         tac_emit_instruction(builder, TAC_RETURN_VOID, TAC_OPERAND_NONE,
                            TAC_OPERAND_NONE, TAC_OPERAND_NONE);
@@ -781,25 +747,20 @@ static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
         }
     }
     
-    // Method 3: Robust fallback - scan ALL nodes for statements
+    // Method 3: Simplified fallback - only scan a limited range and only for specific types
     if (ast_node->compound.statements == 0 && 
         ast_node->children.child1 == 0 && 
         ast_node->children.child2 == 0 && 
         ast_node->children.child3 == 0) {
         
-        // Heuristic: Check ALL AST nodes for unlinked statements  
-        for (ASTNodeIdx_t i = 1; i <= 20; i++) {
+        // Only scan a limited range of nodes to avoid infinite loops
+        for (ASTNodeIdx_t i = 1; i <= 10; i++) {  // Limit scan to first 10 nodes
             ASTNode node = astore_get(i);
             if (node.type == AST_FREE) continue;
             
-            // Look for variable declarations and statements that might be orphaned
+            // Look for variable declarations only - avoid complex statement types
             if (node.type == AST_VAR_DECL) {
                 tac_build_from_ast(builder, i);
-            } else if (node.type >= AST_STMT_COMPOUND && node.type <= AST_STMT_RETURN) {
-                // Process statements but avoid infinite recursion with compound statements
-                if (node.type != AST_STMT_COMPOUND) {
-                    tac_build_from_ast(builder, i);
-                }
             }
         }
     }

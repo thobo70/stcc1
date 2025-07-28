@@ -65,7 +65,7 @@ static int cc2_init(const char* tac_filename, const char* output_filename) {
 
     // Store output filenames
     cc2_state.tac_filename = strdup(tac_filename);
-    cc2_state.output_filename = strdup(output_filename);
+    cc2_state.output_filename = output_filename ? strdup(output_filename) : NULL;
     cc2_state.verbose = 1;
 
     return 0;
