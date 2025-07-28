@@ -754,12 +754,12 @@ static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
         ast_node->children.child3 == 0) {
         
         // Only scan a limited range of nodes to avoid infinite loops
-        for (ASTNodeIdx_t i = 1; i <= 10; i++) {  // Limit scan to first 10 nodes
+        for (ASTNodeIdx_t i = 1; i <= 15; i++) {  // Increase scan range to 15 nodes
             ASTNode node = astore_get(i);
             if (node.type == AST_FREE) continue;
             
-            // Look for variable declarations only - avoid complex statement types
-            if (node.type == AST_VAR_DECL) {
+            // Look for variable declarations and return statements
+            if (node.type == AST_VAR_DECL || node.type == AST_STMT_RETURN) {
                 tac_build_from_ast(builder, i);
             }
         }
