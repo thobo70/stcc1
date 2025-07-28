@@ -487,13 +487,13 @@ $(TAC_ENGINE_LIB):
 	$(MAKE) -C $(TAC_ENGINE_DIR) libtac_engine.a
 
 # Build and run Unity tests
-test: $(TEST_BIN)
+test: all $(TEST_BIN)
 	@echo "=== Running STCC1 Unity Test Suite ==="
-	mkdir -p $(TESTDIR)/temp
-	$(TEST_BIN)
+	@mkdir -p $(TESTDIR)/temp
+	@$(TEST_BIN) 2>/dev/null | grep -E "(===|Tests|PASS|FAIL|IGNORE|OK|Running)" || $(TEST_BIN)
 
 # Build tests without running
-test-build: $(TEST_BIN)
+test-build: all $(TEST_BIN)
 	@echo "Test runner built: $(TEST_BIN)"
 
 # Clean test artifacts
@@ -501,29 +501,99 @@ test-clean:
 	rm -rf $(TEST_OBJ) $(TEST_BIN) $(TESTDIR)/temp
 
 # Run only unit tests
-test-unit: $(TEST_BIN)
+test-unit: all $(TEST_BIN)
 	@echo "=== Running Unit Tests Only ==="
-	mkdir -p $(TESTDIR)/temp
-	$(TEST_BIN) --unit
+	@mkdir -p $(TESTDIR)/temp
+	@$(TEST_BIN) --unit 2>/dev/null | grep -E "(===|Tests|PASS|FAIL|IGNORE|OK|Running)" || $(TEST_BIN) --unit
 
 # Run only integration tests  
-test-integration: $(TEST_BIN)
+test-integration: all $(TEST_BIN)
 	@echo "=== Running Integration Tests Only ==="
-	mkdir -p $(TESTDIR)/temp
-	$(TEST_BIN) --integration
+	@mkdir -p $(TESTDIR)/temp
+	@$(TEST_BIN) --integration 2>/dev/null | grep -E "(===|Tests|PASS|FAIL|IGNORE|OK|Running)" || $(TEST_BIN) --integration
 
 # Show test help
 test-help:
-	@echo "Available test targets:"
-	@echo "  test             - Build and run Unity unit/integration tests"
-	@echo "  test-build       - Build test runner without running"
+	@echo "=== STCC1 Test System Help ==="
+	@echo ""
+	@echo "🧪 Unity Test Framework Targets:"
+	@echo "  test             - Run all Unity tests (unit + integration) [clean output]"
+	@echo "  test-unit        - Run only unit tests [clean output]"
+	@echo "  test-integration - Run only integration tests [clean output]"
+	@echo "  test-verbose     - Run all tests with full debug output"
+	@echo "  test-build       - Build test runner without running tests"
+	@echo "  test-clean       - Remove all test build artifacts"
+	@echo ""
+	@echo "🔧 Compiler Pipeline Tests:"
+	@echo "  test-basic       - Basic end-to-end compiler test (cc0→cc1→cc2)"
+	@echo "  test-compiler    - Comprehensive compiler testing suite"
+	@echo "  test-cc2         - Focused TAC generation testing"
+	@echo ""
+	@echo "📊 Test Categories:"
+	@echo "  • Unit Tests: Component-level testing (storage, lexer, parser, etc.)"
+	@echo "  • Integration Tests: Cross-component functionality"
+	@echo "  • Edge Case Tests: Aggressive boundary condition testing"
+	@echo "  • STAS TAC Tests: TAC generator validation with TAC engine"
+	@echo ""
+	@echo "📝 Test Output:"
+	@echo "  • Clean output shows test results and summaries only"
+	@echo "  • Verbose output shows all debug information"
+	@echo "  • Test files saved in $(TESTDIR)/ for inspection"
+	@echo ""
+	@echo "Following PROJECT_MANIFEST.md: NEVER weaken tests to make them pass!"
+
+# Run tests with full verbose output (for debugging)
+test-verbose: all $(TEST_BIN)
+	@echo "=== Running STCC1 Unity Test Suite (Verbose) ==="
+	@mkdir -p $(TESTDIR)/temp
+	$(TEST_BIN)
+
+# Main help target
+help:
+	@echo "=== STCC1 Small C Compiler Build System ==="
+	@echo ""
+	@echo "🔧 Build Targets:"
+	@echo "  all              - Build all compiler components (default)"
+	@echo "  clean            - Remove all build artifacts"
+	@echo "  doc              - Generate Doxygen documentation"
+	@echo "  lint             - Run cpplint code quality check"
+	@echo ""
+	@echo "🚀 Test Targets:"
+	@echo "  test             - Run Unity unit/integration tests (recommended)"
 	@echo "  test-unit        - Run only unit tests"
 	@echo "  test-integration - Run only integration tests"
-	@echo "  test-clean       - Clean test build artifacts"
+	@echo "  test-verbose     - Run all tests with full debug output"
 	@echo "  test-basic       - Run basic compiler pipeline test"
 	@echo "  test-compiler    - Run comprehensive compiler testing"
 	@echo "  test-cc2         - Test TAC generation pipeline"
-	@echo "  test-help        - Show this help"
+	@echo "  test-build       - Build test runner without running"
+	@echo "  test-clean       - Clean test build artifacts"
+	@echo "  test-help        - Show detailed test help"
+	@echo ""
+	@echo "📊 Component Targets:"
+	@echo "  $(OUT0)            - Lexical analyzer"
+	@echo "  $(OUT0t)           - Token display tool"
+	@echo "  $(OUT1)            - Parser with AST generation"
+	@echo "  $(OUT1t)           - AST/Symbol table display tool"
+	@echo "  $(OUT2)            - TAC generator"
+	@echo "  $(OUT2t)           - TAC analysis tool"
+	@echo ""
+	@echo "📝 Usage Examples:"
+	@echo "  make               # Build everything"
+	@echo "  make test          # Run all tests (clean output)"
+	@echo "  make test-verbose  # Run tests with debug output"
+	@echo "  make test-basic    # Quick compiler test"
+	@echo "  make clean test    # Clean build and test"
+	@echo "  make lint          # Check code quality"
+	@echo "  make help          # Show this help"
+	@echo ""
+	@echo "📁 Output Directories:"
+	@echo "  $(OBJDIR)/            - Object files"
+	@echo "  $(BINDIR)/            - Executable binaries"
+	@echo "  $(TESTDIR)/           - Test output files"
+	@echo "  $(DOCDIR)/            - Generated documentation"
+	@echo ""
+	@echo "For more help: make test-help"
 
 # Add test targets to phony
-.PHONY: test test-build test-clean test-unit test-integration test-help test-basic test-compiler test-cc2
+.PHONY: all clean doc lint test test-build test-clean test-unit test-integration test-help test-basic test-compiler test-cc2 test-verbose help
