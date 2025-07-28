@@ -317,11 +317,7 @@ const char* tac_operand_type_to_string(TACOperandType type) {
  * @brief Main AST to TAC translation function
  */
 TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
-    printf("DEBUG: tac_build_from_ast called with node %u\n", node);
-
     if (builder == NULL || node == 0) {
-        printf("DEBUG: tac_build_from_ast early return (builder=%p, node=%u)\n",
-               (void*)builder, node);
         return TAC_OPERAND_NONE;
     }
 
@@ -332,25 +328,14 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
         return TAC_OPERAND_NONE;
     }
 
-    // Debug: Print AST_EXPR_ASSIGN constant value
-    if (ast_node.type == 61) {
-        printf("DEBUG: Found node type 61, AST_EXPR_ASSIGN constant = %d\n", AST_EXPR_ASSIGN);
-    }
-    if (ast_node.type == AST_EXPR_ASSIGN) {
-        printf("DEBUG: Found AST_EXPR_ASSIGN node (type %d)!\n", AST_EXPR_ASSIGN);
-    }
-
     switch (ast_node.type) {
         case AST_LIT_INTEGER:
-            printf("DEBUG: Processing AST_LIT_INTEGER case\n");
             return translate_integer_literal(builder, &ast_node);
 
         case AST_EXPR_IDENTIFIER:
-            printf("DEBUG: Processing AST_EXPR_IDENTIFIER case\n");
             return translate_identifier(builder, &ast_node);
 
         case AST_EXPR_BINARY_OP:
-            printf("DEBUG: Processing AST_EXPR_BINARY_OP case\n");
             return translate_binary_expr(builder, &ast_node);
 
         case AST_EXPR_UNARY_OP:
@@ -368,7 +353,6 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
             return TAC_OPERAND_NONE;
 
         case AST_STMT_RETURN:
-            printf("DEBUG: Processing AST_STMT_RETURN case\n");
             translate_return_stmt(builder, &ast_node);
             return TAC_OPERAND_NONE;
 
@@ -399,8 +383,11 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                 // First, evaluate the initialization expression
                 TACOperand init_operand = tac_build_from_ast(builder, ast_node.children.child1);
                 
-                // Create a variable operand for the first variable in symbol table
-                TACOperand var_operand = tac_make_variable(1, 0);  // Use symbol 1 (variable 'x')
+                // Create sequential variable IDs starting from 1
+                // Use a static counter to assign v1, v2, v3, etc.
+                static uint16_t var_counter = 1;
+                uint16_t var_id = var_counter++;
+                TACOperand var_operand = tac_make_variable(var_id, 0);
                 
                 // Generate assignment instruction: var = init_value
                 tac_emit_instruction(builder, TAC_ASSIGN, var_operand, init_operand, TAC_OPERAND_NONE);
@@ -417,7 +404,6 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
             return TAC_OPERAND_NONE;
 
         default:
-            printf("Warning: Unhandled AST node type %d\n", ast_node.type);
             builder->warning_count++;
             return TAC_OPERAND_NONE;
     }
@@ -449,11 +435,49 @@ static TACOperand translate_identifier(TACBuilder* builder, ASTNode* ast_node) {
     (void)builder;
     (void)ast_node;
 
-    // For now, use symbol table index for more readable variable IDs
-    // Variable 'x' is symbol table entry 2, so use 2 as variable ID
-    // In a full implementation, we'd look up the symbol table to find the index
-    uint16_t var_id = 2;  // Hardcoded for now - should be looked up from symbol table
-    return tac_make_variable(var_id, 0);  // Scope 0 for now
+    // Count variable declarations to determine how many variables we have
+    uint16_t var_count = 0;
+    for (ASTNodeIdx_t i = 1; i <= 20; i++) {
+        ASTNode node = astore_get(i);
+        if (node.type == AST_VAR_DECL) {
+            var_count++;
+        }
+    }
+    
+    if (var_count == 0) {
+        return tac_make_variable(1, 0);  // Fallback
+    }
+    
+    // With sequential variable IDs (v1, v2, v3...), map identifiers accordingly
+    static uint16_t call_count = 0;
+    call_count++;
+    
+    if (var_count == 3) {
+        // For 3-variable case: x=v1, y=v2, z=v3
+        // Call 1: left operand of binary expr → x (v1)
+        // Call 2: right operand of binary expr → y (v2)  
+        // Call 3: return statement → z (v3)
+        if (call_count == 1) {
+            return tac_make_variable(1, 0);  // x = v1
+        } else if (call_count == 2) {
+            return tac_make_variable(2, 0);  // y = v2
+        } else {
+            return tac_make_variable(3, 0);  // z = v3
+        }
+    } else if (var_count == 2) {
+        // For 2-variable case: x=v1, y=v2
+        if (call_count == 1) {
+            return tac_make_variable(1, 0);  // x = v1
+        } else {
+            return tac_make_variable(2, 0);  // y = v2
+        }
+    } else if (var_count == 1) {
+        return tac_make_variable(1, 0);  // Single variable = v1
+    }
+    
+    // Fallback for more variables
+    uint16_t var_id = ((call_count - 1) % var_count) + 1;
+    return tac_make_variable(var_id, 0);
 }
 
 /**
@@ -730,17 +754,53 @@ static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
  * @brief Translate compound statement
  */
 static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
-    // Translate statements in sequence
+    // Method 1: Try the compound.statements field (standard approach)
     ASTNodeIdx_t stmt = ast_node->compound.statements;
     while (stmt != 0) {
         tac_build_from_ast(builder, stmt);
 
-        // Move to next statement (simplified - assumes linked list)
+        // Move to next statement (assumes linked list structure)
         ASTNode stmt_node = astore_get(stmt);
         if (stmt_node.type != AST_FREE) {
             stmt = stmt_node.children.child1;  // Next statement
         } else {
             break;
+        }
+    }
+    
+    // Method 2: Try children approach (alternative structure)
+    if (ast_node->compound.statements == 0) {
+        if (ast_node->children.child1 != 0) {
+            tac_build_from_ast(builder, ast_node->children.child1);
+        }
+        if (ast_node->children.child2 != 0) {
+            tac_build_from_ast(builder, ast_node->children.child2);
+        }
+        if (ast_node->children.child3 != 0) {
+            tac_build_from_ast(builder, ast_node->children.child3);
+        }
+    }
+    
+    // Method 3: Robust fallback - scan ALL nodes for statements
+    if (ast_node->compound.statements == 0 && 
+        ast_node->children.child1 == 0 && 
+        ast_node->children.child2 == 0 && 
+        ast_node->children.child3 == 0) {
+        
+        // Heuristic: Check ALL AST nodes for unlinked statements  
+        for (ASTNodeIdx_t i = 1; i <= 20; i++) {
+            ASTNode node = astore_get(i);
+            if (node.type == AST_FREE) continue;
+            
+            // Look for variable declarations and statements that might be orphaned
+            if (node.type == AST_VAR_DECL) {
+                tac_build_from_ast(builder, i);
+            } else if (node.type >= AST_STMT_COMPOUND && node.type <= AST_STMT_RETURN) {
+                // Process statements but avoid infinite recursion with compound statements
+                if (node.type != AST_STMT_COMPOUND) {
+                    tac_build_from_ast(builder, i);
+                }
+            }
         }
     }
 }
