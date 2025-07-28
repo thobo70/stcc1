@@ -42,6 +42,8 @@ STCC1 is a modular, educational C compiler that transforms C source code into th
 - ✅ **Ensure each stage can be tested independently**
 - ✅ **Validate TAC semantics match C source semantics**
 
+### 4. **NEVER MIX SOURCES WITH BUILD ARTIFACTS**
+
 ---
 
 ## 📋 **DEVELOPMENT STANDARDS**

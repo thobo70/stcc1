@@ -1,0 +1,29 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+
+# Executables
+tac_engine_test
+tests/tac_engine_unity_tests
+tests/tac_engine_working_tests
+
+# Development artifacts
+*_broken*.c
+*_debug*.c
+*_fixed*.c
+*_temp*.c
+*_old*.c
+*.bak
+*.tmp
+
+# IDE/Editor files
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
