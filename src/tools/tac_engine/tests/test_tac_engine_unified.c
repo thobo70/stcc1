@@ -20,6 +20,9 @@
 #include <string.h>
 #include <limits.h>
 
+// Forward declaration for debugging tests
+extern void run_tac_engine_debugging_tests(void);
+
 // Global test engine - initialized in setUp, destroyed in tearDown
 tac_engine_t* test_engine = NULL;
 
@@ -301,6 +304,10 @@ int main(void) {
     RUN_TEST(test_out_of_bounds_access);
     RUN_TEST(test_empty_sequences);
     RUN_TEST(test_variable_operations);
+    
+    // Debugging functionality tests
+    printf("\n=== TAC Engine Debugging Tests ===\n");
+    run_tac_engine_debugging_tests();
     
     int result = UNITY_END();
     

@@ -12,7 +12,7 @@ OBJ_DIR = $(BUILD_DIR)/obj
 BIN_DIR = $(BUILD_DIR)/bin
 
 # Source files - TAC ENGINE tests only
-ENGINE_TEST_SRCS = test_tac_engine_unified.c test_tac_engine_stas_debug.c
+ENGINE_TEST_SRCS = test_tac_engine_unified.c test_tac_engine_debugging.c
 ENGINE_TEST_OBJS = $(ENGINE_TEST_SRCS:%.c=$(OBJ_DIR)/%.o)
 
 # Unity framework
@@ -24,18 +24,9 @@ TAC_ENGINE_LIB = ../build/lib/libtac_engine.a
 
 # Main test executable
 ENGINE_TEST_EXEC = $(BIN_DIR)/tac_engine_tests
-DEBUG_TEST_EXEC = $(BIN_DIR)/tac_engine_debug_tests
-
-# Debug test objects
-DEBUG_TEST_OBJS = $(OBJ_DIR)/test_tac_engine_stas_debug.o
 
 # Default target
-all: directories $(ENGINE_TEST_EXEC) $(DEBUG_TEST_EXEC)
-
-# Build debug test executable  
-$(DEBUG_TEST_EXEC): $(DEBUG_TEST_OBJS) $(UNITY_OBJS) $(TAC_ENGINE_LIB)
-	@echo "Building TAC Engine debug tests..."
-	@$(CC) $(CFLAGS) -o $@ $^
+all: directories $(ENGINE_TEST_EXEC)
 
 # Create directories
 directories:
@@ -65,11 +56,6 @@ test: $(ENGINE_TEST_EXEC)
 	@echo "Running TAC Engine Tests..."
 	@./$(ENGINE_TEST_EXEC)
 
-# Debug test target - debug TAC ENGINE execution issues
-debug-test: $(DEBUG_TEST_EXEC)
-	@echo "Running TAC Engine Debug Tests..."
-	@./$(DEBUG_TEST_EXEC)
-
 # Clean test artifacts
 clean:
 	rm -f $(ENGINE_TEST_OBJS) $(UNITY_OBJS)
@@ -84,7 +70,7 @@ clean-all: clean
 help:
 	@echo "TAC Engine Test Suite - Manifest Compliant"
 	@echo "Available targets:"
-	@echo "  test      - Run TAC engine functionality tests"
+	@echo "  test      - Run TAC engine functionality tests (includes debugging)"
 	@echo "  clean     - Remove test artifacts"
 	@echo "  clean-all - Remove everything including TAC engine library"
 	@echo "  help      - Show this help"
