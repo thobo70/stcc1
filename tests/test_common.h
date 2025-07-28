@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "../src/ir/tac_types.h"
 
 // Test fixture paths
 #define FIXTURES_PATH "tests/fixtures/"
@@ -60,8 +63,23 @@ typedef struct {
     const char* expected_tac_pattern;
 } CompilerTestCase;
 
+// TAC Engine validation for integration tests
+typedef struct TACValidationResult {
+    bool success;
+    int executed_instructions;
+    int final_return_value;
+    char error_message[256];
+} TACValidationResult;
+
 // Test runner function declarations
 void run_simple_tests(void);
 void run_integration_tests(void);
+
+// TAC Engine validation functions
+TACValidationResult validate_tac_execution(const char* tac_file, 
+                                          int expected_return_value);
+int load_tac_from_file(const char* filename, 
+                      TACInstruction** instructions, 
+                      uint32_t* count);
 
 #endif // TEST_COMMON_H

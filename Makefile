@@ -438,7 +438,7 @@ TEST_COMMON_SRCS = $(TEST_UNITY_SRC)/test_common.c
 TEST_UNIT_SRCS = $(TEST_UNIT_SRC)/test_simple.c \
                  $(TEST_UNIT_SRC)/test_tac.c \
                  $(TEST_UNIT_SRC)/test_tac_generator.c
-TEST_INTEGRATION_SRCS = $(TEST_INTEGRATION_SRC)/test_integration_simple.c
+TEST_INTEGRATION_SRCS = $(TEST_INTEGRATION_SRC)/test_integration.c
 
 # Edge case test files (aggressive testing following PROJECT_MANIFEST.md)
 TEST_EDGE_CASE_SRCS = $(TEST_UNIT_SRC)/test_storage_edge_cases.c \
