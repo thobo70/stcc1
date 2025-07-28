@@ -23,6 +23,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// TAC test external declarations  
+extern void run_tac_tests(void);
+extern void run_stas_tac_generator_tests(void);
+
 // Forward declarations for test suites
 void run_simple_tests(void);
 void run_integration_tests(void);
@@ -58,6 +62,9 @@ int main(void) {
     printf("Running simple tests...\n");
     run_simple_tests();
     
+    printf("\nRunning TAC tests...\n");
+    run_tac_tests();
+    
     // Edge Case Tests - Designed to break weak code
     printf("\n--- Edge Case Tests (Aggressive) ---\n");
     printf("Testing storage components with extreme conditions...\n");
@@ -71,6 +78,11 @@ int main(void) {
     
     printf("\nTesting parser with invalid syntax...\n");
     run_parser_edge_case_tests();
+    
+    // STAS TAC Generator Tests
+    printf("\n--- STAS TAC Generator Tests ---\n");
+    printf("Testing STAS TAC generation with TAC engine validation...\n");
+    run_stas_tac_generator_tests();
     
     // Integration Tests
     printf("\n--- Integration Tests ---\n");

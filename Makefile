@@ -435,7 +435,9 @@ UNITY_SRCS = $(UNITY_SRC)/unity.c
 
 # Test source files
 TEST_COMMON_SRCS = $(TEST_UNITY_SRC)/test_common.c
-TEST_UNIT_SRCS = $(TEST_UNIT_SRC)/test_simple.c
+TEST_UNIT_SRCS = $(TEST_UNIT_SRC)/test_simple.c \
+                 $(TEST_UNIT_SRC)/test_tac.c \
+                 $(TEST_UNIT_SRC)/test_tac_generator.c
 TEST_INTEGRATION_SRCS = $(TEST_INTEGRATION_SRC)/test_integration_simple.c
 
 # Edge case test files (aggressive testing following PROJECT_MANIFEST.md)
@@ -454,10 +456,15 @@ TEST_OBJS = $(ALL_TEST_SRCS:%.c=$(TEST_OBJ)/%.o)
 
 # Compiler component object files needed for tests (includes storage)
 COMPONENT_OBJS = $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/tstore.o \
-                 $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o
+                 $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o \
+                 $(OBJDIR)/tac_store.o
+
+# TAC Engine library for testing
+TAC_ENGINE_DIR = $(SRCDIR)/tools/tac_engine
+TAC_ENGINE_LIB = $(TAC_ENGINE_DIR)/build/lib/libtac_engine.a
 
 # Test flags (less strict than main build to work with Unity framework)
-TEST_CFLAGS = -g -Og -Wall -Wextra -Werror -Wformat=2 -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wundef -std=c99 -D_GNU_SOURCE -I$(UNITY_SRC) -I$(TEST_ROOT) -I$(SRCDIR)
+TEST_CFLAGS = -g -Og -Wall -Wextra -Werror -Wformat=2 -Wcast-qual -Wcast-align -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wredundant-decls -Wundef -std=c99 -D_GNU_SOURCE -I$(UNITY_SRC) -I$(TEST_ROOT) -I$(SRCDIR) -I$(TAC_ENGINE_DIR)
 
 # Create test object directory
 $(TEST_OBJ):
@@ -472,8 +479,12 @@ $(TEST_OBJ)/%.o: %.c | $(TEST_OBJ)
 	$(CC) $(TEST_CFLAGS) -c -o $@ $<
 
 # Build test runner
-$(TEST_BIN): $(TEST_OBJS) $(COMPONENT_OBJS) | $(BINDIR)
+$(TEST_BIN): $(TEST_OBJS) $(COMPONENT_OBJS) $(TAC_ENGINE_LIB) | $(BINDIR)
 	$(CC) $(TEST_CFLAGS) -o $@ $^
+
+# Build TAC Engine library for testing
+$(TAC_ENGINE_LIB):
+	$(MAKE) -C $(TAC_ENGINE_DIR) libtac_engine.a
 
 # Build and run Unity tests
 test: $(TEST_BIN)

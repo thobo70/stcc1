@@ -268,6 +268,46 @@ tac_engine_error_t tac_execute_binary_op(tac_engine_t* engine,
             }
             break;
             
+        case TAC_GT:
+            if (val1.type == TAC_VALUE_INT32) {
+                result_val.data.i32 = (val1.data.i32 > val2.data.i32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            } else if (val1.type == TAC_VALUE_FLOAT) {
+                result_val.data.i32 = (val1.data.f32 > val2.data.f32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            }
+            break;
+            
+        case TAC_LT:
+            if (val1.type == TAC_VALUE_INT32) {
+                result_val.data.i32 = (val1.data.i32 < val2.data.i32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            } else if (val1.type == TAC_VALUE_FLOAT) {
+                result_val.data.i32 = (val1.data.f32 < val2.data.f32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            }
+            break;
+            
+        case TAC_EQ:
+            if (val1.type == TAC_VALUE_INT32) {
+                result_val.data.i32 = (val1.data.i32 == val2.data.i32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            } else if (val1.type == TAC_VALUE_FLOAT) {
+                result_val.data.i32 = (val1.data.f32 == val2.data.f32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            }
+            break;
+            
+        case TAC_NE:
+            if (val1.type == TAC_VALUE_INT32) {
+                result_val.data.i32 = (val1.data.i32 != val2.data.i32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            } else if (val1.type == TAC_VALUE_FLOAT) {
+                result_val.data.i32 = (val1.data.f32 != val2.data.f32) ? 1 : 0;
+                result_val.type = TAC_VALUE_INT32;
+            }
+            break;
+            
         default:
             return TAC_ENGINE_ERR_INVALID_OPCODE;
     }
@@ -537,7 +577,74 @@ tac_engine_error_t tac_engine_run(tac_engine_t* engine) {
         return TAC_ENGINE_ERR_NULL_POINTER;
     }
     
-    // Simple stub - just return OK
+    if (!engine->instructions || engine->instruction_count == 0) {
+        return TAC_ENGINE_ERR_INVALID_OPERAND;
+    }
+    
+    // Execute all instructions starting from PC
+    engine->state = TAC_ENGINE_RUNNING;
+    
+    while (engine->pc < engine->instruction_count) {
+        const TACInstruction* instruction = &engine->instructions[engine->pc];
+        
+        // Execute the instruction based on opcode
+        tac_engine_error_t err = TAC_ENGINE_OK;
+        
+        switch (instruction->opcode) {
+            case TAC_ASSIGN:
+                err = tac_execute_assign(engine, instruction);
+                break;
+                
+            case TAC_ADD:
+            case TAC_SUB:
+            case TAC_MUL:
+            case TAC_DIV:
+            case TAC_GT:
+            case TAC_LT:
+            case TAC_EQ:
+            case TAC_NE:
+                err = tac_execute_binary_op(engine, instruction);
+                break;
+                
+            case TAC_GOTO:
+                err = tac_execute_jump(engine, instruction);
+                continue; // Jump handles PC update
+                
+            case TAC_IF_TRUE:
+            case TAC_IF_FALSE:
+                err = tac_execute_conditional_jump(engine, instruction);
+                continue; // Conditional jump handles PC update
+                
+            case TAC_CALL:
+                err = tac_execute_call(engine, instruction);
+                continue; // Call handles PC update
+                
+            case TAC_RETURN:
+                err = tac_execute_return(engine, instruction);
+                continue; // Return handles PC update
+                
+            case TAC_NOP:
+                // No operation
+                break;
+                
+            default:
+                tac_set_error(engine, TAC_ENGINE_ERR_INVALID_OPCODE,
+                             "Unknown opcode: %d", instruction->opcode);
+                engine->state = TAC_ENGINE_ERROR;
+                return TAC_ENGINE_ERR_INVALID_OPCODE;
+        }
+        
+        if (err != TAC_ENGINE_OK) {
+            engine->state = TAC_ENGINE_ERROR;
+            return err;
+        }
+        
+        // Advance to next instruction
+        engine->pc++;
+        engine->step_count++;
+    }
+    
+    engine->state = TAC_ENGINE_FINISHED;
     return TAC_ENGINE_OK;
 }
 
@@ -546,7 +653,83 @@ tac_engine_error_t tac_engine_step(tac_engine_t* engine) {
         return TAC_ENGINE_ERR_NULL_POINTER;
     }
     
-    // Simple stub - just return OK
+    if (!engine->instructions || engine->instruction_count == 0) {
+        return TAC_ENGINE_ERR_INVALID_OPERAND;
+    }
+    
+    if (engine->pc >= engine->instruction_count) {
+        engine->state = TAC_ENGINE_FINISHED;
+        return TAC_ENGINE_OK; // Execution finished normally
+    }
+    
+    const TACInstruction* instruction = &engine->instructions[engine->pc];
+    
+    // Execute the instruction based on opcode
+    tac_engine_error_t err = TAC_ENGINE_OK;
+    
+    switch (instruction->opcode) {
+        case TAC_ASSIGN:
+            err = tac_execute_assign(engine, instruction);
+            break;
+            
+        case TAC_ADD:
+        case TAC_SUB:
+        case TAC_MUL:
+        case TAC_DIV:
+        case TAC_GT:
+        case TAC_LT:
+        case TAC_EQ:
+        case TAC_NE:
+            err = tac_execute_binary_op(engine, instruction);
+            break;
+            
+        case TAC_GOTO:
+            err = tac_execute_jump(engine, instruction);
+            engine->step_count++;
+            return err; // Jump handles PC update
+            
+        case TAC_IF_TRUE:
+        case TAC_IF_FALSE:
+            err = tac_execute_conditional_jump(engine, instruction);
+            engine->step_count++;
+            return err; // Conditional jump handles PC update
+            
+        case TAC_CALL:
+            err = tac_execute_call(engine, instruction);
+            engine->step_count++;
+            return err; // Call handles PC update
+            
+        case TAC_RETURN:
+            err = tac_execute_return(engine, instruction);
+            engine->step_count++;
+            return err; // Return handles PC update
+            
+        case TAC_NOP:
+            // No operation
+            break;
+            
+        default:
+            tac_set_error(engine, TAC_ENGINE_ERR_INVALID_OPCODE,
+                         "Unknown opcode: %d", instruction->opcode);
+            engine->state = TAC_ENGINE_ERROR;
+            return TAC_ENGINE_ERR_INVALID_OPCODE;
+    }
+    
+    if (err != TAC_ENGINE_OK) {
+        engine->state = TAC_ENGINE_ERROR;
+        return err;
+    }
+    
+    // Advance to next instruction
+    engine->pc++;
+    engine->step_count++;
+    
+    // Check if we've finished
+    if (engine->pc >= engine->instruction_count) {
+        engine->state = TAC_ENGINE_FINISHED;
+        return TAC_ENGINE_OK; // Execution finished normally
+    }
+    
     return TAC_ENGINE_OK;
 }
 

@@ -1,53 +1,52 @@
 # TAC Engine Test Suite Makefile
-# Unified test framework following PROJECT_MANIFEST.md
-# PHILOSOPHY: One test target, one test runner, strong tests that break weak code
+# Tests TAC ENGINE functionality ONLY - Manifest Compliant
+# PHILOSOPHY: Strong tests that break weak TAC engine code
 
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -std=c99 -g -O2
-INCLUDES = -I.. -I../../../ -I../../../ir -I../../../utils -I../../../storage -I../../../../Unity/src -I../../../tests
+INCLUDES = -I.. -I../../../../Unity/src
 
-# Build directories (NEVER mix with sources!)
+# Build directories
 BUILD_DIR = ../build/tests
 OBJ_DIR = $(BUILD_DIR)/obj
 BIN_DIR = $(BUILD_DIR)/bin
 
-# Source files - ONE unified test runner
-TEST_SRCS = test_tac_engine_unified.c
+# Source files - TAC ENGINE tests only
+ENGINE_TEST_SRCS = test_tac_engine_unified.c test_tac_engine_stas_debug.c
+ENGINE_TEST_OBJS = $(ENGINE_TEST_SRCS:%.c=$(OBJ_DIR)/%.o)
 
-TEST_OBJS = $(TEST_SRCS:%.c=$(OBJ_DIR)/%.o)
-
-# Unity framework source
+# Unity framework
 UNITY_SRCS = ../../../../Unity/src/unity.c
+UNITY_OBJS = $(OBJ_DIR)/unity.o
 
 # Dependencies
 TAC_ENGINE_LIB = ../build/lib/libtac_engine.a
-UNITY_OBJS = $(OBJ_DIR)/unity.o
 
-# Executables - ONE test executable
-TEST_EXEC = $(BIN_DIR)/tac_engine_tests
+# Main test executable
+ENGINE_TEST_EXEC = $(BIN_DIR)/tac_engine_tests
+DEBUG_TEST_EXEC = $(BIN_DIR)/tac_engine_debug_tests
+
+# Debug test objects
+DEBUG_TEST_OBJS = $(OBJ_DIR)/test_tac_engine_stas_debug.o
 
 # Default target
-all: directories $(TEST_EXEC)
+all: directories $(ENGINE_TEST_EXEC) $(DEBUG_TEST_EXEC)
 
-# Create build directories
+# Build debug test executable  
+$(DEBUG_TEST_EXEC): $(DEBUG_TEST_OBJS) $(UNITY_OBJS) $(TAC_ENGINE_LIB)
+	@echo "Building TAC Engine debug tests..."
+	@$(CC) $(CFLAGS) -o $@ $^
+
+# Create directories
 directories:
 	@mkdir -p $(OBJ_DIR) $(BIN_DIR)
 
-# Build unified test suite
-$(TEST_EXEC): $(TEST_OBJS) $(UNITY_OBJS) $(TAC_ENGINE_LIB)
-	@echo "Building test suite..."
+# Build TAC engine test suite
+$(ENGINE_TEST_EXEC): $(ENGINE_TEST_OBJS) $(UNITY_OBJS) $(TAC_ENGINE_LIB)
+	@echo "Building TAC Engine tests..."
 	@$(CC) $(CFLAGS) -o $@ $^
 
-# Build working test suite
-# Build working test suite
-$(WORKING_TEST_EXEC): $(OBJ_DIR)/test_tac_engine_working.o $(UNITY_OBJS) $(TAC_ENGINE_LIB)
-	$(CC) $(CFLAGS) -o $@ $^
-
-# Build comprehensive test suite
-$(COMPREHENSIVE_TEST_EXEC): $(COMPREHENSIVE_TEST_OBJS) $(UNITY_OBJS) $(TAC_ENGINE_LIB)
-	$(CC) $(CFLAGS) -o $@ $^
-
-# Build Unity object file
+# Build Unity
 $(UNITY_OBJS): $(UNITY_SRCS) | directories
 	@echo "Building Unity framework..."
 	@$(CC) $(CFLAGS) -I../../../../Unity/src -c $(UNITY_SRCS) -o $(UNITY_OBJS)
@@ -61,50 +60,33 @@ $(OBJ_DIR)/%.o: %.c | directories
 $(TAC_ENGINE_LIB):
 	$(MAKE) -C .. $(shell basename $(TAC_ENGINE_LIB))
 
-# Run tests - ONE test target as requested
-test: $(TEST_EXEC)
+# Main test target - tests TAC ENGINE functionality
+test: $(ENGINE_TEST_EXEC)
 	@echo "Running TAC Engine Tests..."
-	@./$(TEST_EXEC)
+	@./$(ENGINE_TEST_EXEC)
 
-test-edge: $(UNITY_TEST_EXEC)
-	./$(UNITY_TEST_EXEC) edge
-
-test-stress: $(UNITY_TEST_EXEC)
-	./$(UNITY_TEST_EXEC) stress
+# Debug test target - debug TAC ENGINE execution issues
+debug-test: $(DEBUG_TEST_EXEC)
+	@echo "Running TAC Engine Debug Tests..."
+	@./$(DEBUG_TEST_EXEC)
 
 # Clean test artifacts
 clean:
-	rm -f $(TEST_OBJS) $(UNITY_OBJS) $(UNITY_TEST_EXEC) $(WORKING_TEST_EXEC)
+	rm -f $(ENGINE_TEST_OBJS) $(UNITY_OBJS)
+	rm -f $(ENGINE_TEST_EXEC)
 	rm -rf $(BUILD_DIR)
 
 # Clean everything including library
 clean-all: clean
 	$(MAKE) -C .. clean
 
-# Show help
+# Help target
 help:
 	@echo "TAC Engine Test Suite - Manifest Compliant"
-	@echo "==========================================="
-	@echo ""
-	@echo "Targets:"
-	@echo "  all            - Build test suite"
-	@echo "  test           - Run all tests (unified test runner)"
-	@echo "  clean          - Clean test build files"
-	@echo "  clean-all      - Clean everything including dependencies"
-	@echo "  help           - Show this help"
-	@echo ""
-	@echo "Philosophy: One test target, one test runner, strong tests that break weak code"
-	@echo ""
+	@echo "Available targets:"
+	@echo "  test      - Run TAC engine functionality tests"
+	@echo "  clean     - Remove test artifacts"
+	@echo "  clean-all - Remove everything including TAC engine library"
+	@echo "  help      - Show this help"
 
 .PHONY: all test clean clean-all help directories
-
-# Dependencies
-$(OBJ_DIR)/test_tac_engine_main.o: test_tac_engine_main.c test_tac_engine.h
-$(OBJ_DIR)/test_tac_engine_lifecycle.o: test_tac_engine_lifecycle.c test_tac_engine.h
-$(OBJ_DIR)/test_tac_engine_execution.o: test_tac_engine_execution.c test_tac_engine.h
-$(OBJ_DIR)/test_tac_engine_debugging.o: test_tac_engine_debugging.c test_tac_engine.h
-$(OBJ_DIR)/test_tac_engine_edge_cases.o: test_tac_engine_edge_cases.c test_tac_engine.h
-$(OBJ_DIR)/test_tac_engine_working.o: test_tac_engine_working.c test_tac_engine.h
-$(OBJ_DIR)/test_working_runner.o: test_working_runner.c test_tac_engine.h
-
-.PHONY: all test test-working test-lifecycle test-execution test-debugging test-edge test-stress clean clean-all help directories
