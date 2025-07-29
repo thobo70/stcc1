@@ -230,36 +230,58 @@ TACValidationResult validate_tac_execution(const char* tac_file, int expected_re
     }
     
     // Set entry point to "main" function for C programs
-    // First try the function-based approach, then fall back to label search
-    engine_result = tac_engine_set_entry_function(engine, "main");
-    if (engine_result != TAC_ENGINE_OK) {
-        // Look for the first TAC_LABEL instruction (which should be the main function)
-        bool found_label = false;
+    // Try multiple strategies to find the correct entry point
+    engine_result = TAC_ENGINE_ERR_NOT_FOUND;
+    
+    // Strategy 1: Try to use function-based entry point (if implemented in TAC engine)
+    tac_engine_error_t func_result = tac_engine_set_entry_function(engine, "main");
+    if (func_result == TAC_ENGINE_OK) {
+        printf("DEBUG: Set TAC engine entry function to 'main'\n");
+        engine_result = TAC_ENGINE_OK;
+    } else {
+        // Strategy 2: For C programs, try common main function patterns
+        // Pattern A: Single function programs - main is at first label (L1)
+        // Pattern B: Multi-function programs - main is typically at second label (L2)
+        
+        bool found_entry = false;
+        
+        // First try L2 (common case for multi-function programs)
         for (uint32_t i = 0; i < instruction_count; i++) {
             if (instructions[i].opcode == TAC_LABEL) {
-                // Use the new label-based entry point system
                 uint16_t label_id = instructions[i].result.data.label.offset;
-                engine_result = tac_engine_set_entry_label(engine, label_id);
-                if (engine_result == TAC_ENGINE_OK) {
-                    printf("DEBUG: Set TAC engine entry point to label %u at instruction %u\n", label_id, i);
-                    found_label = true;
-                    break;
-                } else {
-                    // Fall back to instruction address
-                    engine_result = tac_engine_set_entry_point(engine, i);
-                    printf("DEBUG: Set TAC engine entry point to instruction %u\n", i);
-                    found_label = true;
-                    break;
+                if (label_id == 2) {  // Try L2 first (main in multi-function)
+                    engine_result = tac_engine_set_entry_label(engine, label_id);
+                    if (engine_result == TAC_ENGINE_OK) {
+                        printf("DEBUG: Set TAC engine entry point to label L%u (main function)\n", label_id);
+                        found_entry = true;
+                        break;
+                    }
                 }
             }
         }
         
-        if (!found_label) {
-            printf("DEBUG: No labels found, starting at instruction 0\n");
+        // If L2 didn't work, try L1 (single function programs)
+        if (!found_entry) {
+            for (uint32_t i = 0; i < instruction_count; i++) {
+                if (instructions[i].opcode == TAC_LABEL) {
+                    uint16_t label_id = instructions[i].result.data.label.offset;
+                    if (label_id == 1) {  // Try L1 (main in single-function)
+                        engine_result = tac_engine_set_entry_label(engine, label_id);
+                        if (engine_result == TAC_ENGINE_OK) {
+                            printf("DEBUG: Set TAC engine entry point to label L%u (single function)\n", label_id);
+                            found_entry = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: start at instruction 0
+        if (!found_entry) {
+            printf("DEBUG: No suitable label found, starting at instruction 0\n");
             engine_result = tac_engine_set_entry_point(engine, 0);
         }
-    } else {
-        printf("DEBUG: Set TAC engine entry function to 'main'\n");
     }
     
     // Execute the code

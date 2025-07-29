@@ -34,6 +34,14 @@ typedef struct TACBuilder {
         uint32_t count;              // Number of functions
         uint32_t main_function_idx;  // Index of main function (-1 if not found)
     } function_table;
+    
+    // Variable mapping table for consistent variable assignment
+    struct {
+        char* variable_names[64];    // Variable name storage
+        uint16_t variable_ids[64];   // Corresponding TAC variable IDs (v1, v2, etc.)
+        uint32_t count;              // Number of variables
+        uint16_t next_variable_id;   // Next variable ID to assign
+    } variable_table;
 } TACBuilder;
 
 // TAC builder initialization and cleanup

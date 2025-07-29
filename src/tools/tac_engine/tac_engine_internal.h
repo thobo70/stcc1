@@ -140,6 +140,8 @@ struct tac_engine {
     // Call stack
     tac_stack_frame_t* call_stack;
     uint32_t call_depth;
+    uint32_t last_call_instruction;  // Address of last CALL instruction for return value handling
+    uint32_t param_counter;          // Counter for parameter passing
 
     // Debugging support
     tac_hook_entry_t* hooks;
