@@ -93,6 +93,23 @@ typedef struct tac_trace_buffer {
 } tac_trace_buffer_t;
 
 /**
+ * @brief Label table entry for jump resolution
+ */
+typedef struct tac_label_entry {
+    uint16_t label_id;              // Label ID
+    uint32_t address;               // Instruction address where label is defined
+    struct tac_label_entry* next;   // Next entry in hash table
+} tac_label_entry_t;
+
+/**
+ * @brief Label resolution table
+ */
+typedef struct tac_label_table {
+    tac_label_entry_t* entries[256]; // Hash table (label_id % 256)
+    uint32_t count;                 // Number of labels
+} tac_label_table_t;
+
+/**
  * @brief Main engine structure
  */
 struct tac_engine {
@@ -109,6 +126,7 @@ struct tac_engine {
     // Code storage
     TACInstruction* instructions;   // Loaded instructions
     uint32_t instruction_count;     // Number of instructions
+    tac_label_table_t label_table;  // Label resolution table
 
     // Variable storage
     tac_value_t* temporaries;       // Temporary variables
@@ -145,6 +163,35 @@ struct tac_engine {
  * @return TAC_ENGINE_OK on success
  */
 tac_engine_error_t tac_memory_init(tac_memory_manager_t* memory, uint32_t max_size);
+
+/**
+ * @brief Initialize label table
+ * @param table Label table to initialize
+ * @return TAC_ENGINE_OK on success
+ */
+tac_engine_error_t tac_label_table_init(tac_label_table_t* table);
+
+/**
+ * @brief Build label table from loaded instructions
+ * @param engine TAC engine
+ * @return TAC_ENGINE_OK on success
+ */
+tac_engine_error_t tac_build_label_table(tac_engine_t* engine);
+
+/**
+ * @brief Resolve label ID to instruction address
+ * @param table Label table
+ * @param label_id Label ID to resolve
+ * @param address Output address
+ * @return TAC_ENGINE_OK if found, TAC_ENGINE_ERR_INVALID_OPERAND if not found
+ */
+tac_engine_error_t tac_resolve_label(const tac_label_table_t* table, uint16_t label_id, uint32_t* address);
+
+/**
+ * @brief Cleanup label table
+ * @param table Label table to cleanup
+ */
+void tac_label_table_cleanup(tac_label_table_t* table);
 
 /**
  * @brief Cleanup memory manager

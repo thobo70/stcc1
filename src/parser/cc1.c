@@ -58,8 +58,11 @@ ASTNodeIdx_t parse_function_definition(void);
 ASTNodeIdx_t parse_statement(void);
 ASTNodeIdx_t parse_expression(void);
 ASTNodeIdx_t parse_assignment_expression(void);
+ASTNodeIdx_t parse_relational_expression(void);
 ASTNodeIdx_t parse_additive_expression(void);
 ASTNodeIdx_t parse_multiplicative_expression(void);
+ASTNodeIdx_t parse_unary_expression(void);
+ASTNodeIdx_t parse_postfix_expression(void);
 ASTNodeIdx_t parse_primary_expression(void);
 
 // Additional function prototypes
@@ -221,7 +224,7 @@ ASTNodeIdx_t parse_expression(void) {
  * Right-associative: a = b = c becomes a = (b = c)
  */
 ASTNodeIdx_t parse_assignment_expression(void) {
-    ASTNodeIdx_t left = parse_additive_expression();
+    ASTNodeIdx_t left = parse_relational_expression();
     if (!left) return 0;
 
     Token_t token = peek_token();
@@ -246,6 +249,48 @@ ASTNodeIdx_t parse_assignment_expression(void) {
             node->ast.binary.right = right;
         }
         return assign_node;
+    }
+
+    return left;
+}
+
+/**
+ * @brief Parse relational expressions (<, >, <=, >=)
+ * Left-associative: a < b < c becomes (a < b) < c
+ */
+ASTNodeIdx_t parse_relational_expression(void) {
+    ASTNodeIdx_t left = parse_additive_expression();
+    if (!left) return 0;
+
+    while (1) {
+        Token_t token = peek_token();
+        if (token.id != T_LT && token.id != T_GT && 
+            token.id != T_LTE && token.id != T_GTE) {
+            break;
+        }
+
+        TokenIdx_t token_idx = tstore_getidx();
+        next_token(); // consume operator
+        
+        ASTNodeIdx_t right = parse_additive_expression();
+        if (!right) {
+            SourceLocation_t location = error_create_location(token_idx);
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             "Expected right operand for relational operator", 
+                             "Check relational expression syntax", "parser", NULL);
+            return left;
+        }
+
+        // Create binary expression node
+        ASTNodeIdx_t op_node = create_ast_node(AST_EXPR_BINARY_OP, token_idx);
+        if (op_node) {
+            HBNode* hb_node = HBGet(op_node, HBMODE_AST);
+            if (hb_node) {
+                hb_node->ast.binary.left = left;
+                hb_node->ast.binary.right = right;
+            }
+        }
+        left = op_node;
     }
 
     return left;
@@ -291,11 +336,79 @@ ASTNodeIdx_t parse_additive_expression(void) {
 }
 
 /**
+ * @brief Parse postfix expressions (function calls, array access, etc.)
+ * Left-associative: f(x)(y) becomes (f(x))(y)
+ */
+ASTNodeIdx_t parse_postfix_expression(void) {
+    ASTNodeIdx_t left = parse_primary_expression();
+    if (!left) return 0;
+
+    while (1) {
+        Token_t token = peek_token();
+        
+        if (token.id == T_LPAREN) {
+            // Function call: identifier(arguments)
+            TokenIdx_t token_idx = tstore_getidx();
+            next_token(); // consume '('
+            
+            ASTNodeIdx_t call_node = create_ast_node(AST_EXPR_CALL, token_idx);
+            if (call_node) {
+                HBNode *node = HBGet(call_node, HBMODE_AST);
+                node->ast.call.function = left; // Function being called
+                node->ast.call.arg_count = 0;
+                node->ast.call.return_type = 0; // Default type
+                
+                // Parse arguments
+                ASTNodeIdx_t first_arg = 0;
+                ASTNodeIdx_t last_arg = 0;
+                
+                while (peek_token().id != T_RPAREN && peek_token().id != T_EOF) {
+                    ASTNodeIdx_t arg = parse_expression();
+                    if (!arg) break;
+                    
+                    node->ast.call.arg_count++;
+                    
+                    if (!first_arg) {
+                        first_arg = arg;
+                        last_arg = arg;
+                        node->ast.call.arguments = first_arg; // Link to first argument
+                    } else {
+                        // Chain arguments using child2 as 'next' pointer
+                        if (last_arg) {
+                            HBNode *last_arg_node = HBGet(last_arg, HBMODE_AST);
+                            if (last_arg_node) {
+                                last_arg_node->ast.children.child2 = arg;
+                            }
+                        }
+                        last_arg = arg;
+                    }
+                    
+                    // Handle comma between arguments
+                    if (peek_token().id == T_COMMA) {
+                        next_token(); // consume comma
+                    } else {
+                        break; // No more arguments
+                    }
+                }
+                
+                expect_token(T_RPAREN);
+            }
+            left = call_node;
+        } else {
+            // No more postfix operators
+            break;
+        }
+    }
+
+    return left;
+}
+
+/**
  * @brief Parse multiplicative expressions (* and /)
  * Left-associative: a * b * c becomes (a * b) * c
  */
 ASTNodeIdx_t parse_multiplicative_expression(void) {
-    ASTNodeIdx_t left = parse_primary_expression();
+    ASTNodeIdx_t left = parse_unary_expression();
     if (!left) return 0;
 
     while (1) {
@@ -307,7 +420,7 @@ ASTNodeIdx_t parse_multiplicative_expression(void) {
         TokenIdx_t token_idx = tstore_getidx();
         next_token(); // consume operator
         
-        ASTNodeIdx_t right = parse_primary_expression();
+        ASTNodeIdx_t right = parse_unary_expression();
         if (!right) {
             SourceLocation_t location = error_create_location(token_idx);
             error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
@@ -327,6 +440,44 @@ ASTNodeIdx_t parse_multiplicative_expression(void) {
     }
 
     return left;
+}
+
+/**
+ * @brief Parse unary expressions (+expr, -expr, !expr, etc.)
+ * Right-associative: --x becomes -((-x))
+ */
+ASTNodeIdx_t parse_unary_expression(void) {
+    Token_t token = peek_token();
+    TokenIdx_t token_idx = tstore_getidx();
+
+    switch (token.id) {
+        case T_PLUS:
+        case T_MINUS:
+        case T_NOT: {
+            next_token(); // consume unary operator
+            
+            ASTNodeIdx_t operand = parse_unary_expression(); // Right-associative
+            if (!operand) {
+                SourceLocation_t location = error_create_location(token_idx);
+                error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                                 "Expected operand after unary operator", "Check unary expression syntax", "parser", NULL);
+                return 0;
+            }
+
+            // Create unary expression node
+            ASTNodeIdx_t unary_node = create_ast_node(AST_EXPR_UNARY_OP, token_idx);
+            if (unary_node) {
+                HBNode *node = HBGet(unary_node, HBMODE_AST);
+                node->ast.unary.operand = operand;
+                node->ast.unary.operator = token.id; // Store the operator type
+            }
+            return unary_node;
+        }
+
+        default:
+            // No unary operator, continue to postfix expression
+            return parse_postfix_expression();
+    }
 }
 
 /**
@@ -366,6 +517,13 @@ ASTNodeIdx_t parse_statement(void) {
                 HBNode *node = HBGet(node_idx, HBMODE_AST);
                 node->ast.conditional.condition = condition;
                 node->ast.conditional.then_stmt = then_stmt;
+                
+                // Handle optional else clause
+                if (peek_token().id == T_ELSE) {
+                    next_token(); // consume 'else'
+                    ASTNodeIdx_t else_stmt = parse_statement();
+                    node->ast.conditional.else_stmt = else_stmt;
+                }
             }
             return node_idx;
         }
@@ -390,6 +548,8 @@ ASTNodeIdx_t parse_statement(void) {
             // Compound statement
             next_token(); // consume '{'
             ASTNodeIdx_t compound = create_ast_node(AST_STMT_COMPOUND, token_idx);
+            ASTNodeIdx_t first_stmt = 0;
+            ASTNodeIdx_t last_stmt = 0;
 
             // Parse statements until '}'
             while (peek_token().id != T_RBRACE && peek_token().id != T_EOF) {
@@ -407,7 +567,37 @@ ASTNodeIdx_t parse_statement(void) {
                     stmt = parse_statement();
                 }
                 if (!stmt) break;
-                // Link statements - simplified chaining
+                
+                // Link statements properly into the compound statement
+                if (!first_stmt) {
+                    first_stmt = stmt;
+                    last_stmt = stmt;
+                    
+                    // Link compound statement to first statement
+                    if (compound) {
+                        HBNode *comp_node = HBGet(compound, HBMODE_AST);
+                        if (comp_node) {
+                            comp_node->ast.children.child1 = first_stmt;
+                        }
+                    }
+                } else {
+                    // Chain subsequent statements using child2 as 'next' pointer
+                    // BUT: Be careful not to overwrite conditional union fields for if/while statements
+                    if (last_stmt) {
+                        HBNode *last_node = HBGet(last_stmt, HBMODE_AST);
+                        if (last_node) {
+                            // Check if this is a conditional statement (if/while) that uses the conditional union
+                            if (last_node->ast.type == AST_STMT_IF || last_node->ast.type == AST_STMT_WHILE) {
+                                // For conditional statements, use child4 for chaining to avoid conflicts
+                                last_node->ast.children.child4 = stmt;
+                            } else {
+                                // For other statements, use child2 as normal
+                                last_node->ast.children.child2 = stmt;
+                            }
+                        }
+                    }
+                    last_stmt = stmt;
+                }
             }
 
             expect_token(T_RBRACE);

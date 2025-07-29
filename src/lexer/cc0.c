@@ -496,7 +496,8 @@ static Token_t *nextToken(FILE *fp) {
       if ((type = is_litstr(pos, '\'', T_LITCHAR)) != NULL) break;
       if ((type = is_id(pos)) != NULL) break;
       fprintf(stderr, "Error: Unknown token >%c< at line %d\n", *pos, line);
-      return NULL;
+      ++pos;  // CRITICAL FIX: Advance past unknown token to prevent infinite loop
+      continue;  // Continue to next character instead of returning NULL
     }
     if (type != NULL) {
       pos += type->len;

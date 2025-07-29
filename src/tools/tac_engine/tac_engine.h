@@ -93,7 +93,8 @@ typedef enum tac_engine_error {
     TAC_ENGINE_ERR_DIVISION_BY_ZERO, // Division by zero
     TAC_ENGINE_ERR_INVALID_MEMORY,   // Invalid memory access
     TAC_ENGINE_ERR_BREAKPOINT,       // Hit breakpoint
-    TAC_ENGINE_ERR_MAX_STEPS         // Maximum steps exceeded
+    TAC_ENGINE_ERR_MAX_STEPS,        // Maximum steps exceeded
+    TAC_ENGINE_ERR_NOT_FOUND         // Label or function not found
 } tac_engine_error_t;
 
 /**
@@ -210,6 +211,30 @@ tac_engine_config_t tac_engine_default_config(void);
 tac_engine_error_t tac_engine_load_code(tac_engine_t* engine,
                                         const TACInstruction* instructions,
                                         uint32_t count);
+
+/**
+ * @brief Set the entry point for execution by instruction address
+ * @param engine Engine instance
+ * @param address Instruction address to start execution from
+ * @return TAC_ENGINE_OK on success
+ */
+tac_engine_error_t tac_engine_set_entry_point(tac_engine_t* engine, uint32_t address);
+
+/**
+ * @brief Set the entry point for execution by label ID
+ * @param engine Engine instance
+ * @param label_id TAC label ID to start execution from
+ * @return TAC_ENGINE_OK on success, TAC_ENGINE_ERR_NOT_FOUND if label not found
+ */
+tac_engine_error_t tac_engine_set_entry_label(tac_engine_t* engine, uint16_t label_id);
+
+/**
+ * @brief Set the entry point for execution by function name
+ * @param engine Engine instance
+ * @param function_name Name of function to start execution from (e.g., "main")
+ * @return TAC_ENGINE_OK on success, TAC_ENGINE_ERR_NOT_FOUND if function not found
+ */
+tac_engine_error_t tac_engine_set_entry_function(tac_engine_t* engine, const char* function_name);
 
 /**
  * @brief Execute all loaded instructions

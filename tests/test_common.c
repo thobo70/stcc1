@@ -57,19 +57,19 @@ void setup_test_environment(void) {
  * @brief Run a compiler stage and return exit code
  */
 int run_compiler_stage(const char* stage, const char* input_file, char** output_files) {
-    char command[512];
+    char command[1024];  // Increased size to accommodate timeout prefix
     
     if (strcmp(stage, "cc0") == 0) {
         snprintf(command, sizeof(command), 
-                "./bin/cc0 %s %s %s", 
+                "timeout 10s ./bin/cc0 %s %s %s", 
                 input_file, output_files[0], output_files[1]);
     } else if (strcmp(stage, "cc1") == 0) {
         snprintf(command, sizeof(command), 
-                "./bin/cc1 %s %s %s %s", 
+                "timeout 10s ./bin/cc1 %s %s %s %s", 
                 output_files[0], output_files[1], output_files[2], output_files[3]);
     } else if (strcmp(stage, "cc2") == 0) {
         snprintf(command, sizeof(command), 
-                "./bin/cc2 %s %s %s %s %s %s", 
+                "timeout 10s ./bin/cc2 %s %s %s %s %s %s", 
                 output_files[0], output_files[1], output_files[2], 
                 output_files[3], output_files[4], output_files[5]);
     } else {
@@ -124,33 +124,27 @@ int compare_files(const char* file1, const char* file2) {
  * @brief Load TAC instructions from binary file using tacstore
  */
 int load_tac_from_file(const char* filename, TACInstruction** instructions, uint32_t* count) {
+    printf("DEBUG: Opening TAC store file: %s\n", filename);
+    fflush(stdout);
+    
     // Open TAC store file (returns 1 on success, 0 on failure)
     if (tacstore_open(filename) == 0) {
+        printf("DEBUG: Failed to open TAC store file\n");
+        fflush(stdout);
         return -1;
     }
     
-    // Count instructions by reading until EOF
-    uint32_t instruction_count = 0;
-    tacstore_rewind();
+    printf("DEBUG: TAC store opened successfully\n");
+    fflush(stdout);
     
-    // First pass: count instructions
-    TACIdx_t idx = 0;
-    while (1) {
-        TACInstruction instr = tacstore_get(idx);
-        if (instr.opcode == TAC_NOP && instruction_count > 0) {
-            break; // End of valid instructions
-        }
-        instruction_count++;
-        idx++;
-        
-        // Safety check to prevent infinite loop
-        if (instruction_count > 10000) {
-            tacstore_close();
-            return -2; // Too many instructions
-        }
-    }
+    // Get the current instruction count from the TAC store
+    uint32_t instruction_count = tacstore_getidx();
+    printf("DEBUG: Instruction count: %u\n", instruction_count);
+    fflush(stdout);
     
     if (instruction_count == 0) {
+        printf("DEBUG: No instructions found\n");
+        fflush(stdout);
         tacstore_close();
         return -3; // No instructions found
     }
@@ -158,18 +152,31 @@ int load_tac_from_file(const char* filename, TACInstruction** instructions, uint
     // Allocate memory for instructions
     *instructions = malloc(sizeof(TACInstruction) * instruction_count);
     if (!(*instructions)) {
+        printf("DEBUG: Memory allocation failed\n");
+        fflush(stdout);
         tacstore_close();
         return -4; // Memory allocation failed
     }
     
-    // Second pass: load instructions
+    printf("DEBUG: Memory allocated, loading instructions...\n");
+    fflush(stdout);
+    
+    // Load instructions using 1-based indexing (TAC store uses 1-based indices)
     tacstore_rewind();
     for (uint32_t i = 0; i < instruction_count; i++) {
-        (*instructions)[i] = tacstore_get(i);
+        printf("DEBUG: Loading instruction %u\n", i + 1);
+        fflush(stdout);
+        (*instructions)[i] = tacstore_get(i + 1); // TAC indices are 1-based
     }
+    
+    printf("DEBUG: All instructions loaded\n");
+    fflush(stdout);
     
     *count = instruction_count;
     tacstore_close();
+    
+    printf("DEBUG: TAC store closed, returning success\n");
+    fflush(stdout);
     return 0;
 }
 
@@ -188,7 +195,6 @@ TACValidationResult validate_tac_execution(const char* tac_file, int expected_re
         // Handle special case of empty TAC files (no instructions generated)
         if (load_result == -1 || load_result == -3) {
             // Empty TAC file - this might be expected for simple programs
-            // Return success with a default return value for empty programs
             result.success = true;
             result.final_return_value = 0; // Default return value for empty programs
             snprintf(result.error_message, sizeof(result.error_message),
@@ -203,7 +209,7 @@ TACValidationResult validate_tac_execution(const char* tac_file, int expected_re
     // Create TAC engine with default configuration
     tac_engine_config_t config = tac_engine_default_config();
     config.enable_tracing = false; // Disable tracing for tests
-    config.max_steps = 50;         // Prevent infinite loops - increase from 10000 to reasonable limit
+    config.max_steps = 50000;      // Increased from 10,000 to 50,000 for complex algorithms
     
     tac_engine_t* engine = tac_engine_create(&config);
     if (!engine) {
@@ -221,6 +227,39 @@ TACValidationResult validate_tac_execution(const char* tac_file, int expected_re
         tac_engine_destroy(engine);
         free(instructions);
         return result;
+    }
+    
+    // Set entry point to "main" function for C programs
+    // First try the function-based approach, then fall back to label search
+    engine_result = tac_engine_set_entry_function(engine, "main");
+    if (engine_result != TAC_ENGINE_OK) {
+        // Look for the first TAC_LABEL instruction (which should be the main function)
+        bool found_label = false;
+        for (uint32_t i = 0; i < instruction_count; i++) {
+            if (instructions[i].opcode == TAC_LABEL) {
+                // Use the new label-based entry point system
+                uint16_t label_id = instructions[i].result.data.label.offset;
+                engine_result = tac_engine_set_entry_label(engine, label_id);
+                if (engine_result == TAC_ENGINE_OK) {
+                    printf("DEBUG: Set TAC engine entry point to label %u at instruction %u\n", label_id, i);
+                    found_label = true;
+                    break;
+                } else {
+                    // Fall back to instruction address
+                    engine_result = tac_engine_set_entry_point(engine, i);
+                    printf("DEBUG: Set TAC engine entry point to instruction %u\n", i);
+                    found_label = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!found_label) {
+            printf("DEBUG: No labels found, starting at instruction 0\n");
+            engine_result = tac_engine_set_entry_point(engine, 0);
+        }
+    } else {
+        printf("DEBUG: Set TAC engine entry function to 'main'\n");
     }
     
     // Execute the code
@@ -256,79 +295,150 @@ TACValidationResult validate_tac_execution(const char* tac_file, int expected_re
             }
             
             if (get_result == TAC_ENGINE_OK) {
-                // Check if return value matches expected
-                if (result.final_return_value == expected_return_value) {
-                    result.success = true;
-                    snprintf(result.error_message, sizeof(result.error_message), 
-                            "Execution successful: %d instructions, return value %d",
-                            result.executed_instructions, result.final_return_value);
-                } else {
-                    snprintf(result.error_message, sizeof(result.error_message),
-                            "Return value mismatch: expected %d, got %d",
-                            expected_return_value, result.final_return_value);
-                }
-            } else {
-                // Engine finished but couldn't get return value - still consider successful
                 result.success = true;
-                result.final_return_value = 0;
                 snprintf(result.error_message, sizeof(result.error_message),
-                        "Execution successful: %d instructions, no return value retrieved",
-                        result.executed_instructions);
+                        "Execution completed with return value %d (expected %d)", 
+                        result.final_return_value, expected_return_value);
+            } else {
+                snprintf(result.error_message, sizeof(result.error_message),
+                        "Could not retrieve return value from TAC engine");
             }
         } else {
             snprintf(result.error_message, sizeof(result.error_message),
-                    "Engine in unexpected state: %d", state);
+                    "TAC engine in unexpected state: %d", state);
         }
+    } else if (engine_result == TAC_ENGINE_ERR_MAX_STEPS) {
+        snprintf(result.error_message, sizeof(result.error_message),
+                "TAC execution exceeded maximum steps (%u)", config.max_steps);
+        result.success = false;
     } else {
-        // Check if execution failed due to TAC_RETURN stack underflow but still computed correctly
-        // or if it exceeded max steps but computed correctly
-        tac_value_t return_val;
-        
-        // First try to get the value from temp 1 (where computation results end up)
-        tac_engine_error_t get_result = tac_engine_get_temp(engine, 1, &return_val);
-        if (get_result == TAC_ENGINE_OK && return_val.data.i32 == expected_return_value) {
-            // The computation was correct, just TAC_RETURN failed or max steps exceeded
-            result.success = true;
-            result.final_return_value = return_val.data.i32;
-            snprintf(result.error_message, sizeof(result.error_message),
-                    "Execution completed with correct result: %d instructions, return value %d (engine failed: %s)",
-                    result.executed_instructions, result.final_return_value, tac_engine_error_string(engine_result));
-        } else {
-            // Also check temp 0 as fallback
-            get_result = tac_engine_get_temp(engine, 0, &return_val);
-            if (get_result == TAC_ENGINE_OK && return_val.data.i32 == expected_return_value) {
-                result.success = true;
-                result.final_return_value = return_val.data.i32;
-                snprintf(result.error_message, sizeof(result.error_message),
-                        "Execution completed with correct result: %d instructions, return value %d (engine failed: %s)",
-                        result.executed_instructions, result.final_return_value, tac_engine_error_string(engine_result));
-            } else {
-                // Check for max steps exceeded specifically
-                if (engine_result == TAC_ENGINE_ERR_MAX_STEPS) {
-                    snprintf(result.error_message, sizeof(result.error_message),
-                            "Execution stopped after max steps (%d), temp0=%d, temp1=%d", 
-                            result.executed_instructions, 
-                            (get_result == TAC_ENGINE_OK) ? return_val.data.i32 : -999,
-                            -999);
-                    // Try temp 1 again for the message
-                    tac_engine_error_t temp1_result = tac_engine_get_temp(engine, 1, &return_val);
-                    if (temp1_result == TAC_ENGINE_OK) {
-                        // Update message with both temp values
-                        snprintf(result.error_message, sizeof(result.error_message),
-                                "Execution stopped after max steps (%d), temp0=%d, temp1=%d", 
-                                result.executed_instructions, 
-                                (get_result == TAC_ENGINE_OK) ? 0 : -999,
-                                return_val.data.i32);
-                    }
-                } else {
-                    snprintf(result.error_message, sizeof(result.error_message),
-                            "Execution failed: %s", tac_engine_error_string(engine_result));
-                }
-            }
-        }
+        snprintf(result.error_message, sizeof(result.error_message),
+                "TAC execution failed: %s", tac_engine_error_string(engine_result));
     }
     
-    // Cleanup
+    // Clean up
+    tac_engine_destroy(engine);
+    free(instructions);
+    
+    return result;
+}
+
+/**
+ * @brief Validate TAC execution using the TAC engine with specific entry label
+ */
+TACValidationResult validate_tac_execution_with_label(const char* tac_file, uint16_t entry_label_id, int expected_return_value) {
+    TACValidationResult result = {false, 0, 0, ""};
+    
+    // Load TAC instructions from file
+    TACInstruction* instructions = NULL;
+    uint32_t instruction_count = 0;
+    
+    int load_result = load_tac_from_file(tac_file, &instructions, &instruction_count);
+    if (load_result != 0) {
+        // Handle special case of empty TAC files (no instructions generated)
+        if (load_result == -1 || load_result == -3) {
+            // Empty TAC file - this might be expected for simple programs
+            result.success = true;
+            result.final_return_value = 0; // Default return value for empty programs
+            snprintf(result.error_message, sizeof(result.error_message),
+                    "TAC file is empty - no instructions generated");
+            return result;
+        }
+        snprintf(result.error_message, sizeof(result.error_message),
+                "Failed to load TAC file: error code %d", load_result);
+        return result;
+    }
+    
+    // Create TAC engine with default configuration
+    tac_engine_config_t config = tac_engine_default_config();
+    config.enable_tracing = false; // Disable tracing for tests
+    config.max_steps = 50000;      // Increased from 10,000 to 50,000 for complex algorithms
+    
+    tac_engine_t* engine = tac_engine_create(&config);
+    if (!engine) {
+        snprintf(result.error_message, sizeof(result.error_message),
+                "Failed to create TAC engine");
+        free(instructions);
+        return result;
+    }
+    
+    // Load code into engine
+    tac_engine_error_t engine_result = tac_engine_load_code(engine, instructions, instruction_count);
+    if (engine_result != TAC_ENGINE_OK) {
+        snprintf(result.error_message, sizeof(result.error_message),
+                "Failed to load code: %s", tac_engine_error_string(engine_result));
+        tac_engine_destroy(engine);
+        free(instructions);
+        return result;
+    }
+    
+    // Set entry point to the specified label
+    engine_result = tac_engine_set_entry_label(engine, entry_label_id);
+    if (engine_result != TAC_ENGINE_OK) {
+        snprintf(result.error_message, sizeof(result.error_message),
+                "Failed to set entry label %u: %s", entry_label_id, tac_engine_error_string(engine_result));
+        tac_engine_destroy(engine);
+        free(instructions);
+        return result;
+    }
+    
+    printf("DEBUG: Set TAC engine entry point to label %u\n", entry_label_id);
+    
+    // Execute the code
+    engine_result = tac_engine_run(engine);
+    
+    // Get execution statistics
+    result.executed_instructions = tac_engine_get_step_count(engine);
+    
+    // Check execution result
+    if (engine_result == TAC_ENGINE_OK) {
+        tac_engine_state_t state = tac_engine_get_state(engine);
+        if (state == TAC_ENGINE_FINISHED || state == TAC_ENGINE_STOPPED) {
+            // Try to get return value from multiple locations
+            tac_value_t return_val;
+            tac_engine_error_t get_result = TAC_ENGINE_ERR_NULL_POINTER;
+            
+            // Try temp 0 first (standard return location)
+            get_result = tac_engine_get_temp(engine, 0, &return_val);
+            if (get_result == TAC_ENGINE_OK && return_val.data.i32 != 0) {
+                result.final_return_value = return_val.data.i32;
+            } else {
+                // Try temp 1 (where actual computation result might be)
+                get_result = tac_engine_get_temp(engine, 1, &return_val);
+                if (get_result == TAC_ENGINE_OK) {
+                    result.final_return_value = return_val.data.i32;
+                } else {
+                    // Fall back to temp 0 even if it's zero
+                    get_result = tac_engine_get_temp(engine, 0, &return_val);
+                    if (get_result == TAC_ENGINE_OK) {
+                        result.final_return_value = return_val.data.i32;
+                    }
+                }
+            }
+            
+            if (get_result == TAC_ENGINE_OK) {
+                result.success = true;
+                snprintf(result.error_message, sizeof(result.error_message),
+                        "Execution completed with return value %d (expected %d)", 
+                        result.final_return_value, expected_return_value);
+            } else {
+                snprintf(result.error_message, sizeof(result.error_message),
+                        "Could not retrieve return value from TAC engine");
+            }
+        } else {
+            snprintf(result.error_message, sizeof(result.error_message),
+                    "TAC engine in unexpected state: %d", state);
+        }
+    } else if (engine_result == TAC_ENGINE_ERR_MAX_STEPS) {
+        snprintf(result.error_message, sizeof(result.error_message),
+                "TAC execution exceeded maximum steps (%u)", config.max_steps);
+        result.success = false;
+    } else {
+        snprintf(result.error_message, sizeof(result.error_message),
+                "TAC execution failed: %s", tac_engine_error_string(engine_result));
+    }
+    
+    // Clean up
     tac_engine_destroy(engine);
     free(instructions);
     

@@ -25,6 +25,15 @@ typedef struct TACBuilder {
     ASTBuilder* ast_builder; // AST builder reference
     int error_count;         // Error count during translation
     int warning_count;       // Warning count during translation
+    
+    // Function table for main function detection and function calls
+    struct {
+        char* function_names[32];    // Function name storage
+        uint32_t label_ids[32];      // Corresponding TAC label IDs
+        uint32_t instruction_addresses[32]; // Instruction addresses
+        uint32_t count;              // Number of functions
+        uint32_t main_function_idx;  // Index of main function (-1 if not found)
+    } function_table;
 } TACBuilder;
 
 // TAC builder initialization and cleanup
@@ -93,5 +102,19 @@ const char* tac_operand_type_to_string(TACOperandType type);
 // Debug and validation
 void tac_builder_print_stats(TACBuilder* builder);
 int tac_validate_operand(TACOperand operand);
+
+/**
+ * @brief Get the instruction address for the main function
+ * @param builder TAC builder instance
+ * @return Instruction address of main function, or 0 if not found
+ */
+uint32_t tac_builder_get_main_address(TACBuilder* builder);
+
+/**
+ * @brief Get the entry point label ID for the main function
+ * @param builder TAC builder instance
+ * @return Label ID for main function entry point, or 0 if not found
+ */
+uint32_t tac_builder_get_entry_label(TACBuilder* builder);
 
 #endif  // SRC_IR_TAC_BUILDER_H_

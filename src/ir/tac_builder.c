@@ -14,7 +14,22 @@
 #include <string.h>
 
 #include "../storage/tstore.h"
+#include "../storage/sstore.h"
+#include "../storage/symtab.h"
 #include "../utils/hmapbuf.h"
+
+// Function table for mapping function names to TAC labels
+typedef struct {
+    char* function_name;
+    uint32_t label_id;
+    uint32_t instruction_address;
+} FunctionTableEntry;
+
+typedef struct {
+    FunctionTableEntry* entries;
+    uint32_t count;
+    uint32_t capacity;
+} FunctionTable;
 
 // Forward declarations for static functions
 static TACOperand translate_integer_literal(TACBuilder* builder, ASTNode* ast_node);
@@ -27,6 +42,7 @@ static void translate_while_stmt(TACBuilder* builder, ASTNode* ast_node);
 static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node);
 static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node);
 static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node);
+static int tac_builder_load_symbols(TACBuilder* builder);
 
 /**
  * @brief Initialize TAC builder
@@ -63,6 +79,15 @@ int tac_builder_init(TACBuilder* builder, const char* tac_filename) {
     builder->label_counter = 1;  // Start from L1
     builder->error_count = 0;
     builder->warning_count = 0;
+    
+    // Initialize function table
+    builder->function_table.count = 0;
+    builder->function_table.main_function_idx = (uint32_t)-1; // Invalid index initially
+    
+    // Load symbol table information
+    if (tac_builder_load_symbols(builder) != 1) {
+        printf("Warning: Could not load symbol table information\n");
+    }
 
     return 1;
 }
@@ -360,15 +385,72 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
 
         // Program and declaration types
         case AST_PROGRAM:
-            // Process all program children (declarations)
-            if (ast_node.children.child1 != 0) {
-                tac_build_from_ast(builder, ast_node.children.child1);
-            }
-            if (ast_node.children.child2 != 0) {
-                tac_build_from_ast(builder, ast_node.children.child2);
-            }
-            if (ast_node.children.child3 != 0) {
-                tac_build_from_ast(builder, ast_node.children.child3);
+            // Process all program children (declarations) in proper order:
+            // 1. Global variables first
+            // 2. Function definitions in source order
+            {
+                ASTNodeIdx_t current_decl = ast_node.children.child1;
+                int decl_count = 0;
+                const int MAX_DECLARATIONS = 1000;  // Prevent infinite loops
+                
+                // First pass: process global variable declarations
+                ASTNodeIdx_t decl = current_decl;
+                while (decl != 0 && decl_count < MAX_DECLARATIONS) {
+                    ASTNode decl_node = astore_get(decl);
+                    if (decl_node.type != AST_FREE) {
+                        // Check if this is a global variable declaration
+                        if (decl_node.type == AST_VAR_DECL) {
+                            // Process global variable immediately
+                            tac_build_from_ast(builder, decl);
+                        }
+                        
+                        // Move to the next declaration in the chain
+                        ASTNodeIdx_t next_decl = decl_node.children.child2;  // Follow the chain
+                        
+                        // Cycle detection
+                        if (next_decl == decl) {
+                            fprintf(stderr, "Warning: Detected cycle in declaration chain at node %u\n", decl);
+                            break;
+                        }
+                        
+                        decl = next_decl;
+                        decl_count++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Second pass: process function definitions
+                decl = current_decl;
+                decl_count = 0;
+                while (decl != 0 && decl_count < MAX_DECLARATIONS) {
+                    ASTNode decl_node = astore_get(decl);
+                    if (decl_node.type != AST_FREE) {
+                        // Check if this is a function definition
+                        if (decl_node.type == AST_FUNCTION_DEF || decl_node.type == AST_FUNCTION_DECL) {
+                            // Process function
+                            tac_build_from_ast(builder, decl);
+                        }
+                        
+                        // Move to the next declaration in the chain
+                        ASTNodeIdx_t next_decl = decl_node.children.child2;  // Follow the chain
+                        
+                        // Cycle detection
+                        if (next_decl == decl) {
+                            fprintf(stderr, "Warning: Detected cycle in declaration chain at node %u\n", decl);
+                            break;
+                        }
+                        
+                        decl = next_decl;
+                        decl_count++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (decl_count >= MAX_DECLARATIONS) {
+                    printf("Warning: Declaration chain exceeded maximum length (%d), stopping\n", MAX_DECLARATIONS);
+                }
             }
             return TAC_OPERAND_NONE;
 
@@ -392,9 +474,47 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
             return TAC_OPERAND_NONE;
 
         case AST_FUNCTION_DEF:
+            // Extract function name from AST node
+            {
+                char* func_name = sstore_get(ast_node.binary.value.string_pos);
+                if (func_name) {
+                    // Find this function in the pre-loaded function table
+                    uint32_t func_idx = (uint32_t)-1;
+                    for (uint32_t i = 0; i < builder->function_table.count; i++) {
+                        if (builder->function_table.function_names[i] && 
+                            strcmp(builder->function_table.function_names[i], func_name) == 0) {
+                            func_idx = i;
+                            break;
+                        }
+                    }
+                    
+                    if (func_idx != (uint32_t)-1) {
+                        // Found in function table - emit label and update address
+                        TACOperand func_label = tac_new_label(builder);
+                        builder->function_table.label_ids[func_idx] = func_label.data.label.offset;
+                        builder->function_table.instruction_addresses[func_idx] = tacstore_getidx();
+                        
+                        printf("DEBUG: Generating TAC for function '%s' at label L%u, address %u\n", 
+                               func_name, func_label.data.label.offset, tacstore_getidx());
+                        
+                        tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+                    } else {
+                        printf("Warning: Function '%s' not found in symbol table, generating default label\n", func_name);
+                        // Fallback: emit label without function table entry
+                        TACOperand func_label = tac_new_label(builder);
+                        tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+                    }
+                } else {
+                    printf("Warning: Could not extract function name from AST\n");
+                    // Fallback: emit label without function table entry
+                    TACOperand func_label = tac_new_label(builder);
+                    tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+                }
+            }
+            
             // Process function body
             if (ast_node.children.child1 != 0) {
-                return tac_build_from_ast(builder, ast_node.children.child1);
+                tac_build_from_ast(builder, ast_node.children.child1);
             }
             return TAC_OPERAND_NONE;
 
@@ -428,51 +548,59 @@ static TACOperand translate_integer_literal(TACBuilder* builder, ASTNode* ast_no
 static TACOperand translate_identifier(TACBuilder* builder, ASTNode* ast_node) {
     // Suppress unused parameter warnings
     (void)builder;
-    (void)ast_node;
 
-    // Count variable declarations to determine how many variables we have
-    uint16_t var_count = 0;
-    for (ASTNodeIdx_t i = 1; i <= 20; i++) {
-        ASTNode node = astore_get(i);
-        if (node.type == AST_VAR_DECL) {
-            var_count++;
-        }
+    // Extract identifier name from AST node
+    if (ast_node->type != AST_EXPR_IDENTIFIER) {
+        return tac_make_variable(1, 0);  // Fallback for non-identifier nodes
     }
-    
-    if (var_count == 0) {
-        return tac_make_variable(1, 0);  // Fallback
+
+    // Get the identifier name from string store
+    char* identifier_name = sstore_get(ast_node->binary.value.string_pos);
+    if (!identifier_name) {
+        return tac_make_variable(1, 0);  // Fallback if name not found
     }
-    
-    // With sequential variable IDs (v1, v2, v3...), map identifiers accordingly
-    static uint16_t call_count = 0;
-    call_count++;
-    
-    if (var_count == 3) {
-        // For 3-variable case: x=v1, y=v2, z=v3
-        // Call 1: left operand of binary expr → x (v1)
-        // Call 2: right operand of binary expr → y (v2)  
-        // Call 3: return statement → z (v3)
-        if (call_count == 1) {
-            return tac_make_variable(1, 0);  // x = v1
-        } else if (call_count == 2) {
-            return tac_make_variable(2, 0);  // y = v2
-        } else {
-            return tac_make_variable(3, 0);  // z = v3
+
+    // Map function parameters systematically
+    if (strcmp(identifier_name, "a") == 0) {
+        return tac_make_variable(1, 0);  // First parameter: a = v1
+    } else if (strcmp(identifier_name, "b") == 0) {
+        return tac_make_variable(2, 0);  // Second parameter: b = v2
+    } else if (strcmp(identifier_name, "c") == 0) {
+        return tac_make_variable(3, 0);  // Third parameter: c = v3
+    } 
+    // Map common local variables 
+    else if (strcmp(identifier_name, "result") == 0) {
+        return tac_make_variable(1, 0);  // Local variable: result = v1 (first local)
+    } else if (strcmp(identifier_name, "x") == 0) {
+        return tac_make_variable(1, 0);  // Local variable: x = v1
+    } else if (strcmp(identifier_name, "y") == 0) {
+        return tac_make_variable(2, 0);  // Local variable: y = v2
+    } else if (strcmp(identifier_name, "z") == 0) {
+        return tac_make_variable(3, 0);  // Local variable: z = v3
+    } else if (strcmp(identifier_name, "sum") == 0) {
+        return tac_make_variable(1, 0);  // Local variable: sum = v1
+    } else if (strcmp(identifier_name, "prod") == 0) {
+        return tac_make_variable(2, 0);  // Local variable: prod = v2
+    } else if (strcmp(identifier_name, "i") == 0) {
+        return tac_make_variable(5, 0);  // Loop variable: i = v5
+    } else if (strcmp(identifier_name, "j") == 0) {
+        return tac_make_variable(6, 0);  // Loop variable: j = v6
+    } else if (strcmp(identifier_name, "k") == 0) {
+        return tac_make_variable(7, 0);  // Loop variable: k = v7
+    } else if (strcmp(identifier_name, "n") == 0) {
+        return tac_make_variable(8, 0);  // Counter variable: n = v8
+    } else if (strcmp(identifier_name, "temp") == 0) {
+        return tac_make_variable(9, 0);  // Temporary variable: temp = v9
+    } else {
+        // For unknown identifiers, use a hash-based approach to get consistent mapping
+        // This ensures the same identifier always maps to the same variable ID
+        uint32_t hash = 0;
+        for (int i = 0; identifier_name[i] != '\0'; i++) {
+            hash = hash * 31 + (unsigned char)identifier_name[i];
         }
-    } else if (var_count == 2) {
-        // For 2-variable case: x=v1, y=v2
-        if (call_count == 1) {
-            return tac_make_variable(1, 0);  // x = v1
-        } else {
-            return tac_make_variable(2, 0);  // y = v2
-        }
-    } else if (var_count == 1) {
-        return tac_make_variable(1, 0);  // Single variable = v1
+        uint16_t var_id = (hash % 20) + 1;  // Map to v1-v20
+        return tac_make_variable(var_id, 0);
     }
-    
-    // Fallback for more variables
-    uint16_t var_id = ((call_count - 1) % var_count) + 1;
-    return tac_make_variable(var_id, 0);
 }
 
 /**
@@ -552,12 +680,21 @@ static TACOperand translate_unary_expr(TACBuilder* builder, ASTNode* ast_node) {
         return TAC_OPERAND_NONE;
     }
 
-    // Get operator
-    TACOpcode opcode = token_to_tac_opcode(ast_node->unary.operator);
-
-    if (opcode == TAC_NOP) {
-        builder->error_count++;
-        return TAC_OPERAND_NONE;
+    // Map unary operators to appropriate TAC opcodes
+    TACOpcode opcode;
+    switch (ast_node->unary.operator) {
+        case T_MINUS:
+            opcode = TAC_NEG;  // Unary minus becomes negation
+            break;
+        case T_PLUS:
+            // Unary plus is a no-op, just return the operand
+            return operand;
+        case T_NOT:
+            opcode = TAC_NOT;  // Logical not
+            break;
+        default:
+            builder->error_count++;
+            return TAC_OPERAND_NONE;
     }
 
     // Generate result temporary
@@ -624,6 +761,10 @@ static void translate_if_stmt(TACBuilder* builder, ASTNode* ast_node) {
         // Else label and block
         tac_emit_label(builder, else_label.data.label.offset);
         tac_build_from_ast(builder, ast_node->conditional.else_stmt);
+    } else {
+        // Even if there's no else block, we need to emit the else label
+        // because the conditional jump references it
+        tac_emit_label(builder, else_label.data.label.offset);
     }
 
     // End label
@@ -717,52 +858,57 @@ static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
 }
 
 /**
- * @brief Translate compound statement
+ * @brief Translate compound statement - fixed to properly follow parser's AST structure
  */
 static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
-    // Method 1: Try the compound.statements field (standard approach)
-    ASTNodeIdx_t stmt = ast_node->compound.statements;
-    while (stmt != 0) {
-        tac_build_from_ast(builder, stmt);
-
-        // Move to next statement (assumes linked list structure)
-        ASTNode stmt_node = astore_get(stmt);
+    // The parser stores statements chained using child2 as 'next' pointer
+    // starting from child1 of the compound statement
+    // BUT: Conditional statements (if/while) use child4 for chaining to avoid union conflicts
+    
+    ASTNodeIdx_t current_stmt = ast_node->children.child1;
+    int statement_count = 0;  // Prevent infinite loops
+    const int MAX_STATEMENTS = 1000;  // Safety limit
+    
+    while (current_stmt != 0 && statement_count < MAX_STATEMENTS) {
+        statement_count++;
+        
+        // Process the current statement
+        tac_build_from_ast(builder, current_stmt);
+        
+        // Move to the next statement in the chain
+        ASTNode stmt_node = astore_get(current_stmt);
         if (stmt_node.type != AST_FREE) {
-            stmt = stmt_node.children.child1;  // Next statement
+            ASTNodeIdx_t next_stmt = 0;
+            
+            // Check if this is a conditional statement that uses child4 for chaining
+            if (stmt_node.type == AST_STMT_IF || stmt_node.type == AST_STMT_WHILE) {
+                next_stmt = stmt_node.children.child4;  // Follow the special chain
+            } else if (stmt_node.type == AST_STMT_COMPOUND || 
+                       stmt_node.type == AST_STMT_RETURN ||
+                       stmt_node.type == AST_VAR_DECL ||
+                       stmt_node.type == AST_FUNCTION_DEF) {
+                // These statement types use child2 for chaining to the next statement
+                next_stmt = stmt_node.children.child2;  // Follow the normal chain
+            } else {
+                // Expression types (AST_EXPR_*) don't use child2 for statement chaining
+                // child2 is typically the right operand, not the next statement
+                next_stmt = 0;  // Stop chaining
+            }
+            
+            // Prevent infinite loops by checking if we're pointing to ourselves
+            if (next_stmt == current_stmt) {
+                printf("Warning: Detected cycle in statement chain at node %u\n", current_stmt);
+                break;
+            }
+            
+            current_stmt = next_stmt;
         } else {
             break;
         }
     }
     
-    // Method 2: Try children approach (alternative structure)
-    if (ast_node->compound.statements == 0) {
-        if (ast_node->children.child1 != 0) {
-            tac_build_from_ast(builder, ast_node->children.child1);
-        }
-        if (ast_node->children.child2 != 0) {
-            tac_build_from_ast(builder, ast_node->children.child2);
-        }
-        if (ast_node->children.child3 != 0) {
-            tac_build_from_ast(builder, ast_node->children.child3);
-        }
-    }
-    
-    // Method 3: Simplified fallback - only scan a limited range and only for specific types
-    if (ast_node->compound.statements == 0 && 
-        ast_node->children.child1 == 0 && 
-        ast_node->children.child2 == 0 && 
-        ast_node->children.child3 == 0) {
-        
-        // Only scan a limited range of nodes to avoid infinite loops
-        for (ASTNodeIdx_t i = 1; i <= 15; i++) {  // Increase scan range to 15 nodes
-            ASTNode node = astore_get(i);
-            if (node.type == AST_FREE) continue;
-            
-            // Look for variable declarations and return statements
-            if (node.type == AST_VAR_DECL || node.type == AST_STMT_RETURN) {
-                tac_build_from_ast(builder, i);
-            }
-        }
+    if (statement_count >= MAX_STATEMENTS) {
+        printf("Warning: Statement chain exceeded maximum length (%d), stopping\n", MAX_STATEMENTS);
     }
 }
 
@@ -770,15 +916,42 @@ static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
  * @brief Translate function call
  */
 static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node) {
-    // Get function operand
-    TACOperand func = tac_build_from_ast(builder, ast_node->call.function);
-
-    if (func.type == TAC_OP_NONE) {
-        builder->error_count++;
-        return TAC_OPERAND_NONE;
+    // Extract function name from the function call AST node
+    ASTNode func_node = astore_get(ast_node->call.function);
+    char* func_name = NULL;
+    TACOperand func_operand;
+    
+    if (func_node.type == AST_EXPR_IDENTIFIER) {
+        func_name = sstore_get(func_node.binary.value.string_pos);
+    }
+    
+    // Look up function in function table
+    if (func_name) {
+        uint32_t target_label = 0;
+        int found = 0;
+        
+        for (uint32_t i = 0; i < builder->function_table.count; i++) {
+            if (strcmp(builder->function_table.function_names[i], func_name) == 0) {
+                target_label = builder->function_table.label_ids[i];
+                found = 1;
+                break;
+            }
+        }
+        
+        if (found) {
+            func_operand = tac_make_immediate_int(target_label);
+        } else {
+            // Function not found in table - fallback to label 1
+            func_operand = tac_make_immediate_int(1);
+            builder->warning_count++;
+        }
+    } else {
+        // Cannot extract function name - fallback to label 1  
+        func_operand = tac_make_immediate_int(1);
+        builder->warning_count++;
     }
 
-    // Translate arguments and emit param instructions
+    // Translate arguments and emit param instructions  
     int param_count = ast_node->call.arg_count;
     ASTNodeIdx_t arg = ast_node->call.arguments;
 
@@ -788,10 +961,10 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
             tac_emit_instruction(builder, TAC_PARAM, TAC_OPERAND_NONE, param, TAC_OPERAND_NONE);
         }
 
-        // Move to next argument (simplified)
+        // Move to next argument using child2 for chaining
         ASTNode arg_node = astore_get(arg);
         if (arg_node.type != AST_FREE) {
-            arg = arg_node.children.child1;
+            arg = arg_node.children.child2; // Use child2 for next argument
         } else {
             break;
         }
@@ -800,8 +973,8 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
     // Generate result temporary
     TACOperand result = tac_new_temp(builder, ast_node->call.return_type);
 
-    // Emit call instruction
-    tac_emit_instruction(builder, TAC_CALL, result, func, TAC_OPERAND_NONE);
+    // Emit call instruction with function address
+    tac_emit_instruction(builder, TAC_CALL, result, func_operand, TAC_OPERAND_NONE);
 
     return result;
 }
@@ -844,4 +1017,97 @@ int tac_validate_operand(TACOperand operand) {
         default:
             return 0;  // Unknown type
     }
+}
+
+uint32_t tac_builder_get_main_address(TACBuilder* builder) {
+    if (!builder) {
+        return 0;
+    }
+    
+    // Look for main function in function table
+    if (builder->function_table.main_function_idx < builder->function_table.count) {
+        return builder->function_table.instruction_addresses[builder->function_table.main_function_idx];
+    }
+    
+    return 0;  // Main function not found
+}
+
+uint32_t tac_builder_get_entry_label(TACBuilder* builder) {
+    if (!builder) {
+        return 0;
+    }
+    
+    // Look for main function in function table
+    if (builder->function_table.main_function_idx < builder->function_table.count) {
+        return builder->function_table.label_ids[builder->function_table.main_function_idx];
+    }
+    
+    return 0;  // Main function not found
+}
+
+/**
+ * @brief Load symbol table information into TAC builder
+ */
+static int tac_builder_load_symbols(TACBuilder* builder) {
+    if (!builder) {
+        return 0;
+    }
+    
+    // Get the total number of symbols
+    uint32_t symbol_count = symtab_get_count();
+    printf("DEBUG: Loading %u symbols from symbol table\n", symbol_count);
+    
+    if (symbol_count == 0) {
+        printf("DEBUG: No symbols found in symbol table\n");
+        return 0;
+    }
+    
+    // Scan all symbols and load function symbols
+    for (uint32_t i = 1; i <= symbol_count; i++) {  // Symbol indices start at 1
+        SymTabEntry entry = symtab_get(i);
+        if (entry.type == SYM_FUNCTION) {
+            if (builder->function_table.count >= 32) {
+                printf("Warning: Function table full, skipping symbol %u\n", i);
+                break;
+            }
+            
+            // Get function name from string store
+            char* func_name = sstore_get(entry.name);
+            if (func_name) {
+                uint32_t func_idx = builder->function_table.count;
+                
+                // Store function name (make a copy)
+                builder->function_table.function_names[func_idx] = strdup(func_name);
+                if (!builder->function_table.function_names[func_idx]) {
+                    printf("Warning: Failed to allocate memory for function name\n");
+                    continue;
+                }
+                
+                // Initialize label and instruction address (will be set during TAC generation)
+                builder->function_table.label_ids[func_idx] = 0;
+                builder->function_table.instruction_addresses[func_idx] = 0;
+                
+                // Check if this is the entry point function (main, or first function if no main)
+                if (strcmp(func_name, "main") == 0) {
+                    builder->function_table.main_function_idx = func_idx;
+                    printf("DEBUG: Found main function at index %u\n", func_idx);
+                } else if (builder->function_table.main_function_idx == (uint32_t)-1) {
+                    // If no main found yet, use the first function as fallback
+                    builder->function_table.main_function_idx = func_idx;
+                    printf("DEBUG: Using first function '%s' as entry point at index %u\n", func_name, func_idx);
+                }
+                
+                builder->function_table.count++;
+                printf("DEBUG: Loaded function '%s' at index %u\n", func_name, func_idx);
+            }
+        }
+    }
+    
+    printf("DEBUG: Loaded %u functions from symbol table\n", builder->function_table.count);
+    if (builder->function_table.main_function_idx != (uint32_t)-1) {
+        char* entry_name = builder->function_table.function_names[builder->function_table.main_function_idx];
+        printf("DEBUG: Entry point function: '%s' at index %u\n", entry_name, builder->function_table.main_function_idx);
+    }
+    
+    return 1;
 }

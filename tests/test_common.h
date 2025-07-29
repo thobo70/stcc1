@@ -78,6 +78,9 @@ void run_integration_tests(void);
 // TAC Engine validation functions
 TACValidationResult validate_tac_execution(const char* tac_file, 
                                           int expected_return_value);
+TACValidationResult validate_tac_execution_with_label(const char* tac_file, 
+                                                     uint16_t entry_label_id,
+                                                     int expected_return_value);
 int load_tac_from_file(const char* filename, 
                       TACInstruction** instructions, 
                       uint32_t* count);
