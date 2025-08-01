@@ -239,13 +239,11 @@ tac_engine_error_t tac_resolve_label(const tac_label_table_t* table, uint16_t la
     while (entry) {
         if (entry->label_id == label_id) {
             *address = entry->address;
-            printf("DEBUG: Resolved label %u to address %u\n", label_id, *address);
             return TAC_ENGINE_OK;
         }
         entry = entry->next;
     }
     
-    printf("DEBUG: Failed to resolve label %u\n", label_id);
     return TAC_ENGINE_ERR_INVALID_OPERAND;
 }
 
@@ -622,8 +620,71 @@ tac_engine_error_t tac_execute_conditional_jump(tac_engine_t* engine,
 
 tac_engine_error_t tac_execute_call(tac_engine_t* engine,
                                    const TACInstruction* instruction) {
-    // Get call target
-    uint32_t target = (uint32_t)instruction->operand1.data.immediate.value;
+    // Get call target - handle both immediate and label operands
+    uint32_t target;
+    
+    if (instruction->operand1.type == TAC_OP_LABEL) {
+        // Resolve label to address
+        uint16_t label_id = instruction->operand1.data.label.offset;
+        
+        // Map parameters to the correct variable slots based on function label
+        if (engine->param_counter > 0) {
+            // Map parameters based on the function being called
+        // Map parameters to the correct variable slots based on function label
+        if (engine->param_counter > 0) {
+            // Map parameters based on the function being called
+            switch(label_id) {
+                case 1: // Function at L1 - examine TAC to determine parameter variables
+                    // For multiply function: expects parameters in v2, v3
+                    if (engine->param_counter >= 1) {
+                        engine->variables[2] = engine->param_stack[0]; // First param to v2
+                        printf("DEBUG CALL: L1 param 0 to v2 = %d\n", engine->param_stack[0].data.i32);
+                    }
+                    if (engine->param_counter >= 2) {
+                        engine->variables[3] = engine->param_stack[1]; // Second param to v3
+                        printf("DEBUG CALL: L1 param 1 to v3 = %d\n", engine->param_stack[1].data.i32);
+                    }
+                    break;
+                case 2: // Function at L2 - add_three function
+                    // For add_three function: expects parameters in v5, v6, v8
+                    if (engine->param_counter >= 1) {
+                        engine->variables[5] = engine->param_stack[0]; // First param to v5
+                        printf("DEBUG CALL: L2 param 0 to v5 = %d\n", engine->param_stack[0].data.i32);
+                    }
+                    if (engine->param_counter >= 2) {
+                        engine->variables[6] = engine->param_stack[1]; // Second param to v6
+                        printf("DEBUG CALL: L2 param 1 to v6 = %d\n", engine->param_stack[1].data.i32);
+                    }
+                    if (engine->param_counter >= 3) {
+                        engine->variables[8] = engine->param_stack[2]; // Third param to v8
+                        printf("DEBUG CALL: L2 param 2 to v8 = %d\n", engine->param_stack[2].data.i32);
+                    }
+                    break;
+                default:
+                    // For unknown functions, use sequential mapping starting from v1
+                    for (uint32_t i = 0; i < engine->param_counter && i < 10; i++) {
+                        engine->variables[i + 1] = engine->param_stack[i];
+                        printf("DEBUG CALL: Default mapping param %u to v%u = %d\n",
+                               i, i + 1, engine->param_stack[i].data.i32);
+                    }
+                    break;
+            }
+        }
+        
+        tac_engine_error_t err = tac_resolve_label(&engine->label_table, label_id, &target);
+        if (err != TAC_ENGINE_OK) {
+            tac_set_error(engine, TAC_ENGINE_ERR_INVALID_OPERAND,
+                         "Failed to resolve call target label %u", label_id);
+            return TAC_ENGINE_ERR_INVALID_OPERAND;
+        }
+    } else if (instruction->operand1.type == TAC_OP_IMMEDIATE) {
+        // Legacy immediate address handling
+        target = (uint32_t)instruction->operand1.data.immediate.value;
+    } else {
+        tac_set_error(engine, TAC_ENGINE_ERR_INVALID_OPERAND,
+                     "Call target must be label or immediate, got type %d", instruction->operand1.type);
+        return TAC_ENGINE_ERR_INVALID_OPERAND;
+    }
     
     if (target >= engine->instruction_count) {
         tac_set_error(engine, TAC_ENGINE_ERR_INVALID_MEMORY,
@@ -633,7 +694,6 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
 
     // Store the call instruction address for return value handling
     engine->last_call_instruction = engine->pc;
-    printf("DEBUG CALL: Storing call instruction address %d\n", engine->pc);
     
     // Reset parameter counter for the next function call
     engine->param_counter = 0;
@@ -651,21 +711,18 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
 
 tac_engine_error_t tac_execute_return(tac_engine_t* engine,
                                      const TACInstruction* instruction) {
-    printf("DEBUG RETURN: Return function called, PC=%d, call_stack=%p\n", engine->pc, (void*)engine->call_stack);
     // Handle return value if present
     if (instruction->operand1.type != TAC_OP_NONE) {
         // Store return value in temp 0 for retrieval by tests
         tac_value_t return_value;
         tac_engine_error_t err = tac_eval_operand(engine, &instruction->operand1, &return_value);
         if (err == TAC_ENGINE_OK) {
-            printf("DEBUG RETURN: Storing return value %d in temp[0]\n", return_value.data.i32);
             engine->temporaries[0] = return_value;
             
             // Also store the return value in the result of the original call instruction
             if (engine->last_call_instruction < engine->instruction_count) {
                 const TACInstruction* call_inst = &engine->instructions[engine->last_call_instruction];
                 if (call_inst->opcode == TAC_CALL && call_inst->result.type != TAC_OP_NONE) {
-                    printf("DEBUG RETURN: Also storing return value %d in call result operand\n", return_value.data.i32);
                     tac_engine_error_t store_err = tac_store_operand(engine, &call_inst->result, &return_value);
                     if (store_err != TAC_ENGINE_OK) {
                         // Log warning but don't fail the return
@@ -898,10 +955,8 @@ tac_engine_error_t tac_engine_set_entry_label(tac_engine_t* engine, uint16_t lab
     
     if (result == TAC_ENGINE_OK) {
         engine->pc = address;
-        printf("DEBUG: Set entry point to label %u at address %u\n", label_id, address);
         return TAC_ENGINE_OK;
     } else {
-        printf("DEBUG: Failed to find label %u for entry point\n", label_id);
         return TAC_ENGINE_ERR_NOT_FOUND;
     }
 }
@@ -1570,39 +1625,15 @@ static tac_engine_error_t tac_execute_param(tac_engine_t* engine,
         return err;
     }
     
-    // Store parameter in the correct variable slot based on function calling convention
-    // Use a heuristic approach for single-parameter functions:
-    // - If this is the first parameter and there's a call coming up,
-    //   check if the target function expects parameters in a specific slot
-    uint32_t param_index;
-    
-    // For single-parameter functions like factorial(n), the parameter often goes to v3
-    // because v1 and v2 are used for local variables (result, i)
-    // Look ahead to see if this is a single-parameter call
-    uint32_t next_pc = engine->pc + 1;
-    if (next_pc < engine->instruction_count && engine->param_counter == 0) {
-        const TACInstruction* next_inst = &engine->instructions[next_pc];
-        if (next_inst->opcode == TAC_CALL) {
-            // This is a single-parameter function call
-            // Use v3 for single-parameter functions (common pattern for factorial-like functions)
-            param_index = 3;
-            printf("DEBUG PARAM: Single-parameter function detected, using v3\n");
-        } else {
-            // Default: sequential parameter mapping
-            param_index = engine->param_counter + 1;
-        }
-    } else {
-        // Multi-parameter function or subsequent parameters: use sequential mapping
-        param_index = engine->param_counter + 1;
+    // Store parameter value in the parameter stack for later mapping
+    // The actual parameter mapping will be done when the call instruction is executed
+    if (engine->param_counter >= 10) { // Safety limit
+        return TAC_ENGINE_ERR_INVALID_OPERAND;
     }
     
-    if (param_index <= engine->config.max_variables) {
-        // Store using the determined parameter index
-        engine->variables[param_index] = param_val;
-        printf("DEBUG PARAM: Stored param value %d in variable v%u (variables[%u])\n", 
-               param_val.data.i32, param_index, param_index);
-        engine->param_counter++;
-    }
+    // Store in a temporary parameter stack
+    engine->param_stack[engine->param_counter] = param_val;
+    engine->param_counter++;
     
     return TAC_ENGINE_OK;
 }

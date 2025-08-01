@@ -9,7 +9,27 @@
 
 #include "tac_printer.h"
 #include "tac_builder.h"
+#include "../storage/symtab.h"
+#include "../storage/sstore.h"
 #include <stdio.h>
+#include <string.h>
+
+// Global function table for label-to-name mapping
+static TACPrinterFunctionTable* g_function_table = NULL;
+
+/**
+ * @brief Set the function table for label resolution
+ */
+void tac_printer_set_function_table(TACPrinterFunctionTable* table) {
+    g_function_table = table;
+}
+
+/**
+ * @brief Clear the function table
+ */
+void tac_printer_clear_function_table(void) {
+    g_function_table = NULL;
+}
 
 /**
  * @brief Print a TAC operand
@@ -25,7 +45,18 @@ void tac_print_operand(TACOperand operand) {
             break;
 
         case TAC_OP_VAR:
-            printf("v%d", operand.data.variable.id);
+            // Try to get the actual variable name from symbol table
+            if (operand.data.variable.id > 0) {
+                SymTabEntry entry = symtab_get(operand.data.variable.id);
+                char* var_name = sstore_get(entry.name);
+                if (var_name && strlen(var_name) > 0) {
+                    printf("%s", var_name);
+                } else {
+                    printf("v%d", operand.data.variable.id);  // Fallback to index
+                }
+            } else {
+                printf("v%d", operand.data.variable.id);
+            }
             if (operand.data.variable.scope > 0) {
                 printf(".%d", operand.data.variable.scope);
             }
@@ -36,7 +67,27 @@ void tac_print_operand(TACOperand operand) {
             break;
 
         case TAC_OP_LABEL:
-            printf("L%d", operand.data.label.offset);
+            // Try to resolve function names for labels using function table
+            {
+                uint16_t label_id = operand.data.label.offset;
+                char* func_name = NULL;
+                
+                // Check if we have a function table with label mappings
+                if (g_function_table) {
+                    for (uint32_t i = 0; i < g_function_table->count; i++) {
+                        if (g_function_table->label_ids[i] == label_id) {
+                            func_name = g_function_table->function_names[i];
+                            break;
+                        }
+                    }
+                }
+                
+                if (func_name && strlen(func_name) > 0) {
+                    printf("%s", func_name);
+                } else {
+                    printf("L%d", label_id);
+                }
+            }
             break;
 
         case TAC_OP_FUNCTION:

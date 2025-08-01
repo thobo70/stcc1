@@ -42,8 +42,7 @@ typedef struct {
 typedef struct {
     TokenIdx_t current_token;
     int in_function;
-    int scope_depth;
-    SymIdx_t current_scope;
+    int scope_depth;  // C99 scope depth: 0=file, 1=function, 2+=block
     int error_count;
 } ParserState_t;
 
@@ -52,6 +51,9 @@ static ParserState_t parser_state = {0};
 // Forward declarations
 static TypeSpecifier_t parse_type_specifiers(void);
 static int is_type_specifier_start(TokenID_t token_id);
+static void enter_scope(void);
+static void exit_scope(void);
+static SymIdx_t lookup_symbol_in_scope(sstore_pos_t name_pos);
 ASTNodeIdx_t parse_program(void);
 ASTNodeIdx_t parse_declaration(void);
 ASTNodeIdx_t parse_function_definition(void);
@@ -131,15 +133,76 @@ static ASTNodeIdx_t create_ast_node(ASTNodeType type, TokenIdx_t token_idx) {
 }
 
 /**
- * @brief Add symbol to symbol table
+ * @brief Enter a new scope (when encountering '{') - C99 compliant
+ */
+static void enter_scope(void) {
+    parser_state.scope_depth++;
+    // In C99, we don't create scope symbols - we just track scope depth
+    // Variables declared at this depth will have proper block scope
+}
+
+/**
+ * @brief Exit current scope (when encountering '}') - C99 compliant
+ */
+static void exit_scope(void) {
+    if (parser_state.scope_depth > 0) {
+        parser_state.scope_depth--;
+        // In C99, variables simply go out of scope when we exit the block
+        // No need to track artificial scope symbols
+    }
+}
+
+/**
+ * @brief Look up symbol using C99 scoping rules
+ * In C99: innermost scope hides outer scope variables with same name
+ */
+static SymIdx_t lookup_symbol_in_scope(sstore_pos_t name_pos) {
+    SymIdx_t best_match = 0;
+    int best_scope_depth = -1;
+    
+    // Search all symbols for matches with this name
+    uint32_t symbol_count = symtab_get_count();
+    
+    for (SymIdx_t i = 1; i <= symbol_count; i++) {
+        SymTabEntry entry = symtab_get(i);
+        
+        // Skip non-matching names
+        if (entry.name != name_pos) {
+            continue;
+        }
+        
+        // Check if this symbol is visible from current scope
+        // C99 rule: variable is visible if declared at current scope depth or shallower
+        if (entry.scope_depth <= parser_state.scope_depth) {
+            // C99 rule: innermost (highest depth) declaration wins
+            if (entry.scope_depth > best_scope_depth) {
+                best_match = i;
+                best_scope_depth = entry.scope_depth;
+            }
+        }
+    }
+    
+    return best_match;
+}
+
+/**
+ * @brief Look up symbol by name in symbol table
+ */
+static SymIdx_t lookup_symbol(sstore_pos_t name_pos) {
+    // Use scoped lookup for proper C semantics
+    return lookup_symbol_in_scope(name_pos);
+}
+
+/**
+ * @brief Add symbol to symbol table with C99 scope depth
  */
 static SymIdx_t add_symbol(sstore_pos_t name_pos, SymType type, TokenIdx_t token_idx) {
     SymTabEntry entry = {0};
     entry.type = type;
-    // Use the string position directly from the token
     entry.name = name_pos;
-    entry.parent = parser_state.current_scope;
-    entry.line = token_idx; // Use token index as line reference
+    entry.parent = 0;  // Not used in C99 scoping
+    entry.line = token_idx;
+    entry.scope_depth = parser_state.scope_depth;  // Record C99 scope depth
 
     SymIdx_t sym_idx = symtab_add(&entry);
     if (sym_idx == 0) {
@@ -164,7 +227,15 @@ ASTNodeIdx_t parse_primary_expression(void) {
             ASTNodeIdx_t node_idx = create_ast_node(AST_EXPR_IDENTIFIER, token_idx);
             if (node_idx) {
                 HBNode *node = HBGet(node_idx, HBMODE_AST);
-                node->ast.binary.value.string_pos = token.pos;  // Store identifier name position
+                // Look up the symbol index for this identifier
+                SymIdx_t sym_idx = lookup_symbol(token.pos);
+                if (sym_idx == 0) {
+                    // Symbol not found - this could be an error or forward reference
+                    node->ast.binary.value.string_pos = token.pos;  // Store name for error reporting
+                } else {
+                    // Store the symbol index in the identifier node
+                    node->ast.binary.value.symbol_idx = sym_idx;
+                }
             }
             return node_idx;
         }
@@ -545,8 +616,12 @@ ASTNodeIdx_t parse_statement(void) {
         }
 
         case T_LBRACE: {
-            // Compound statement
+            // Compound statement - creates a new scope
             next_token(); // consume '{'
+            
+            // Enter new scope for this block
+            enter_scope();
+            
             ASTNodeIdx_t compound = create_ast_node(AST_STMT_COMPOUND, token_idx);
             ASTNodeIdx_t first_stmt = 0;
             ASTNodeIdx_t last_stmt = 0;
@@ -601,6 +676,10 @@ ASTNodeIdx_t parse_statement(void) {
             }
 
             expect_token(T_RBRACE);
+            
+            // Exit scope when leaving the block
+            exit_scope();
+            
             return compound;
         }
 
@@ -654,11 +733,14 @@ ASTNodeIdx_t parse_declaration(void) {
 
     // Check if this is a function definition
     if (peek_token().id == T_LPAREN) {
-        // Function definition
+        // Function definition - functions have file scope (depth 0)
         parser_state.in_function = 1;
         add_symbol(id_token.pos, SYM_FUNCTION, tstore_getidx());
 
         next_token();  // consume '('
+        
+        // Enter function parameter scope (depth 1 for C99 function scope)
+        parser_state.scope_depth = 1;
         
         // Parse parameters (simple implementation)
         while (peek_token().id != T_RPAREN && peek_token().id != T_EOF) {
@@ -666,7 +748,10 @@ ASTNodeIdx_t parse_declaration(void) {
             if (peek_token().id == T_INT || peek_token().id == T_CHAR || peek_token().id == T_FLOAT) {
                 next_token();  // consume type
                 if (peek_token().id == T_ID) {
+                    Token_t param_token = peek_token();
                     next_token();  // consume parameter name
+                    // Parameters have function scope (depth 1) in C99
+                    add_symbol(param_token.pos, SYM_VARIABLE, tstore_getidx());
                 }
                 // Handle comma between parameters
                 if (peek_token().id == T_COMMA) {
@@ -689,16 +774,20 @@ ASTNodeIdx_t parse_declaration(void) {
                 node->ast.binary.value.string_pos = id_token.pos;  // Function name
                 node->ast.children.child1 = body;
             }
+            // Exit function scope back to file scope (depth 0)
             parser_state.in_function = 0;
+            parser_state.scope_depth = 0;
             return func_node;
         } else {
             // Function declaration only
             expect_token(T_SEMICOLON);
+            // Reset scope depth for function declaration
+            parser_state.scope_depth = 0;
             return create_ast_node(AST_FUNCTION_DECL, token_idx);
         }
     } else {
         // Variable declaration
-        add_symbol(id_token.pos, SYM_VARIABLE, tstore_getidx());
+        SymIdx_t sym_idx = add_symbol(id_token.pos, SYM_VARIABLE, tstore_getidx());
 
         // Handle optional initializer
         if (peek_token().id == T_ASSIGN) {
@@ -707,8 +796,8 @@ ASTNodeIdx_t parse_declaration(void) {
             ASTNodeIdx_t decl_node = create_ast_node(AST_VAR_DECL, token_idx);
             if (decl_node) {
                 HBNode *node = HBGet(decl_node, HBMODE_AST);
-                node->ast.binary.value.string_pos = id_token.pos;  // Variable name
-                node->ast.children.child1 = init_expr;
+                node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
+                node->ast.declaration.initializer = init_expr;
             }
             expect_token(T_SEMICOLON);
             return decl_node;
@@ -717,7 +806,7 @@ ASTNodeIdx_t parse_declaration(void) {
             ASTNodeIdx_t decl_node = create_ast_node(AST_VAR_DECL, token_idx);
             if (decl_node) {
                 HBNode *node = HBGet(decl_node, HBMODE_AST);
-                node->ast.binary.value.string_pos = id_token.pos;  // Variable name
+                node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
             }
             return decl_node;
         }
@@ -785,12 +874,14 @@ static void parser_init(void) {
 
     error_core_init(&config);
 
-    // Initialize parser state
+    // Initialize parser state for C99 scoping
     parser_state.current_token = 0;
     parser_state.in_function = 0;
-    parser_state.scope_depth = 0;
-    parser_state.current_scope = 0;
+    parser_state.scope_depth = 0;  // Start at file scope (C99)
     parser_state.error_count = 0;
+    
+    // In C99, we don't need to create artificial scope symbols
+    // File scope is the default starting point
 }
 
 /**

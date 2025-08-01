@@ -26,6 +26,8 @@
 // TAC test external declarations  
 extern void run_tac_tests(void);
 extern void run_stas_tac_generator_tests(void);
+extern void run_tac_builder_c99_tests(void);
+extern void run_integration_c99_scoping_tests(void);
 
 // Forward declarations for test suites
 void run_simple_tests(void);
@@ -65,6 +67,9 @@ int main(void) {
     printf("\nRunning TAC tests...\n");
     run_tac_tests();
     
+    printf("\nRunning TAC Builder C99 tests...\n");
+    run_tac_builder_c99_tests();
+    
     // Edge Case Tests - Designed to break weak code
     printf("\n--- Edge Case Tests (Aggressive) ---\n");
     printf("Testing storage components with extreme conditions...\n");
@@ -88,6 +93,9 @@ int main(void) {
     printf("\n--- Integration Tests ---\n");
     printf("Running integration tests...\n");
     run_integration_tests();
+    
+    printf("\nRunning C99 scoping integration tests...\n");
+    run_integration_c99_scoping_tests();
     
     printf("\n=== Test Summary ===\n");
     return UNITY_END();

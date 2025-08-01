@@ -12,6 +12,17 @@
 
 #include "tac_types.h"
 #include "tac_store.h"
+
+// Function table for label-to-name mapping in TAC printer
+typedef struct {
+    char* function_names[32];
+    uint32_t label_ids[32];
+    uint32_t count;
+} TACPrinterFunctionTable;
+
+// Function table management
+void tac_printer_set_function_table(TACPrinterFunctionTable* table);
+void tac_printer_clear_function_table(void);
 #include <stdio.h>
 
 // TAC printing functions

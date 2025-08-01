@@ -42,22 +42,25 @@ LIB = $(LIB_DIR)/libtac_engine.a
 TEST_EXEC = $(BIN_DIR)/tac_engine_test
 
 # Default target
-all: directories $(LIB) $(TEST_EXEC)
+all: $(LIB) $(TEST_EXEC)
 
 # Create build directories
-directories:
-	@mkdir -p $(OBJ_DIR) $(BIN_DIR) $(LIB_DIR)
+$(BUILD_DIR) $(OBJ_DIR) $(BIN_DIR) $(LIB_DIR):
+	mkdir -p $@
 
 # Build static library
-$(LIB): $(OBJS)
+$(LIB): $(OBJS) | $(LIB_DIR)
 	ar rcs $@ $^
 
+# Alias for compatibility
+libtac_engine.a: $(LIB)
+
 # Build simple test executable
-$(TEST_EXEC): $(TEST_OBJS) $(LIB)
+$(TEST_EXEC): $(TEST_OBJS) $(LIB) | $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $^
 
 # Compile source files
-$(OBJ_DIR)/%.o: %.c
+$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # Run simple tests

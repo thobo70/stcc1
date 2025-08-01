@@ -437,8 +437,10 @@ UNITY_SRCS = $(UNITY_SRC)/unity.c
 TEST_COMMON_SRCS = $(TEST_UNITY_SRC)/test_common.c
 TEST_UNIT_SRCS = $(TEST_UNIT_SRC)/test_simple.c \
                  $(TEST_UNIT_SRC)/test_tac.c \
-                 $(TEST_UNIT_SRC)/test_tac_generator.c
-TEST_INTEGRATION_SRCS = $(TEST_INTEGRATION_SRC)/test_integration.c
+                 $(TEST_UNIT_SRC)/test_tac_generator.c \
+                 $(TEST_UNIT_SRC)/test_tac_builder_c99.c
+TEST_INTEGRATION_SRCS = $(TEST_INTEGRATION_SRC)/test_integration.c \
+                        $(TEST_INTEGRATION_SRC)/test_integration_c99_scoping.c
 
 # Edge case test files (aggressive testing following PROJECT_MANIFEST.md)
 TEST_EDGE_CASE_SRCS = $(TEST_UNIT_SRC)/test_storage_edge_cases.c \
@@ -454,10 +456,10 @@ ALL_TEST_SRCS = $(UNITY_SRCS) $(TEST_COMMON_SRCS) $(TEST_UNIT_SRCS) $(TEST_INTEG
 # Test object files
 TEST_OBJS = $(ALL_TEST_SRCS:%.c=$(TEST_OBJ)/%.o)
 
-# Compiler component object files needed for tests (includes storage)
+# Compiler component object files needed for tests (includes storage and TAC builder)
 COMPONENT_OBJS = $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/tstore.o \
                  $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o \
-                 $(OBJDIR)/tac_store.o
+                 $(OBJDIR)/tac_store.o $(OBJDIR)/tac_builder.o $(OBJDIR)/tac_printer.o
 
 # TAC Engine library for testing
 TAC_ENGINE_DIR = $(SRCDIR)/tools/tac_engine

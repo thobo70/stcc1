@@ -40,6 +40,7 @@ typedef struct SymTabEntry {
     SymIdx_t sibling;
     sstore_pos_t value;
     int line;
+    int scope_depth;  // C99 block scope depth (0=file scope, 1=function scope, 2+=block scope)
 } SymTabEntry;
 
 

@@ -8,6 +8,7 @@
  */
 
 #include "tac_builder.h"
+#include "tac_printer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,53 +46,11 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
 static int tac_builder_load_symbols(TACBuilder* builder);
 
 /**
- * @brief Register a variable name with its TAC variable ID
+ * @brief Look up a variable in the symbol table and return its TAC operand
  */
-static uint16_t tac_register_variable(TACBuilder* builder, const char* variable_name) {
-    if (!builder || !variable_name || builder->variable_table.count >= 64) {
-        return 0; // Invalid variable ID
-    }
-    
-    // Check if variable is already registered
-    for (uint32_t i = 0; i < builder->variable_table.count; i++) {
-        if (builder->variable_table.variable_names[i] && 
-            strcmp(builder->variable_table.variable_names[i], variable_name) == 0) {
-            return builder->variable_table.variable_ids[i];
-        }
-    }
-    
-    // Register new variable
-    uint32_t idx = builder->variable_table.count;
-    builder->variable_table.variable_names[idx] = strdup(variable_name);
-    if (!builder->variable_table.variable_names[idx]) {
-        return 0; // Memory allocation failed
-    }
-    
-    builder->variable_table.variable_ids[idx] = builder->variable_table.next_variable_id++;
-    builder->variable_table.count++;
-    
-    printf("DEBUG: Registered variable '%s' as v%u\n", variable_name, builder->variable_table.variable_ids[idx]);
-    
-    return builder->variable_table.variable_ids[idx];
-}
-
 /**
- * @brief Look up a variable ID by name
+ * @brief Create a new TAC builder instance
  */
-static uint16_t tac_lookup_variable(TACBuilder* builder, const char* variable_name) {
-    if (!builder || !variable_name) {
-        return 0;
-    }
-    
-    for (uint32_t i = 0; i < builder->variable_table.count; i++) {
-        if (builder->variable_table.variable_names[i] && 
-            strcmp(builder->variable_table.variable_names[i], variable_name) == 0) {
-            return builder->variable_table.variable_ids[i];
-        }
-    }
-    
-    return 0; // Variable not found
-}
 
 /**
  * @brief Initialize TAC builder
@@ -133,12 +92,6 @@ int tac_builder_init(TACBuilder* builder, const char* tac_filename) {
     builder->function_table.count = 0;
     builder->function_table.main_function_idx = (uint32_t)-1; // Invalid index initially
     
-    // Initialize variable table
-    memset(builder->variable_table.variable_names, 0, sizeof(builder->variable_table.variable_names));
-    memset(builder->variable_table.variable_ids, 0, sizeof(builder->variable_table.variable_ids));
-    builder->variable_table.count = 0;
-    builder->variable_table.next_variable_id = 1;  // Start from v1
-    
     // Load symbol table information
     if (tac_builder_load_symbols(builder) != 1) {
         printf("Warning: Could not load symbol table information\n");
@@ -168,12 +121,6 @@ void tac_builder_cleanup(TACBuilder* builder) {
     for (uint32_t i = 0; i < builder->function_table.count; i++) {
         free(builder->function_table.function_names[i]);
         builder->function_table.function_names[i] = NULL;
-    }
-
-    // Clean up variable table
-    for (uint32_t i = 0; i < builder->variable_table.count; i++) {
-        free(builder->variable_table.variable_names[i]);
-        builder->variable_table.variable_names[i] = NULL;
     }
 
     memset(builder, 0, sizeof(TACBuilder));
@@ -529,36 +476,27 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
             return TAC_OPERAND_NONE;
 
         case AST_VAR_DECL:
-            // Variable declarations with initialization
-            // The AST structure for variable declarations:
-            // - child1: initialization expression (if any)
-            // - The variable name might be in the binary.value.string_pos
+            // Variable declarations should use symbol table entries
+            // The parser should have already created symbol table entries and stored the index
             
-            // First try to get variable name from the AST node itself
-            char* var_name = NULL;
-            if (ast_node.binary.value.string_pos != 0) {
-                var_name = sstore_get(ast_node.binary.value.string_pos);
+            // Get symbol index directly from the AST node
+            SymIdx_t symbol_idx = ast_node.declaration.symbol_idx;
+            if (symbol_idx == 0) {
+                builder->error_count++;
+                return TAC_OPERAND_NONE;
             }
             
-            // If no variable name found in current node, this might be a complex declaration
-            // Look for variable name in the symbol table based on proximity to this declaration
-            uint16_t var_id = 0;
-            if (var_name) {
-                var_id = tac_register_variable(builder, var_name);
-            } else {
-                // Fallback: use sequential numbering but try to associate with symbol table
-                var_id = builder->variable_table.next_variable_id++;
-                printf("DEBUG: Variable declaration without name, assigned v%u\n", var_id);
-            }
+            // Create variable operand using symbol index
+            TACOperand var_operand = tac_make_variable(symbol_idx, 0);
             
-            TACOperand var_operand = tac_make_variable(var_id, 0);
-            
-            if (ast_node.children.child1 != 0) {
+            // Process initialization if present
+            if (ast_node.declaration.initializer != 0) {
                 // Evaluate the initialization expression
-                TACOperand init_operand = tac_build_from_ast(builder, ast_node.children.child1);
-                
-                // Generate assignment instruction: var = init_value
-                tac_emit_instruction(builder, TAC_ASSIGN, var_operand, init_operand, TAC_OPERAND_NONE);
+                TACOperand init_operand = tac_build_from_ast(builder, ast_node.declaration.initializer);
+                if (init_operand.type != TAC_OP_NONE) {
+                    // Generate assignment instruction: var = init_value
+                    tac_emit_instruction(builder, TAC_ASSIGN, var_operand, init_operand, TAC_OPERAND_NONE);
+                }
             }
             
             return var_operand;
@@ -583,9 +521,6 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                         TACOperand func_label = tac_new_label(builder);
                         builder->function_table.label_ids[func_idx] = func_label.data.label.offset;
                         builder->function_table.instruction_addresses[func_idx] = tacstore_getidx();
-                        
-                        printf("DEBUG: Generating TAC for function '%s' at label L%u, address %u\n", 
-                               func_name, func_label.data.label.offset, tacstore_getidx());
                         
                         tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
                     } else {
@@ -633,75 +568,25 @@ static TACOperand translate_integer_literal(TACBuilder* builder, ASTNode* ast_no
 }
 
 /**
- * @brief Translate identifier
+ * @brief Translate identifier using symbol table lookup
  */
 static TACOperand translate_identifier(TACBuilder* builder, ASTNode* ast_node) {
-    // Extract identifier name from AST node
+    // Extract symbol index from AST node
     if (ast_node->type != AST_EXPR_IDENTIFIER) {
-        return tac_make_variable(1, 0);  // Fallback for non-identifier nodes
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
     }
 
-    // Get the identifier name from string store
-    char* identifier_name = sstore_get(ast_node->binary.value.string_pos);
-    if (!identifier_name) {
-        return tac_make_variable(1, 0);  // Fallback if name not found
+    // Get the symbol index directly from the AST node
+    SymIdx_t symbol_idx = ast_node->binary.value.symbol_idx;
+    if (symbol_idx == 0) {
+        // No symbol index stored - this is an error
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
     }
 
-    // First, try to look up the variable in our variable table
-    uint16_t var_id = tac_lookup_variable(builder, identifier_name);
-    if (var_id != 0) {
-        return tac_make_variable(var_id, 0);
-    }
-
-    // If not found in variable table, try to register it
-    // This handles the case where an identifier is used before explicit declaration tracking
-    var_id = tac_register_variable(builder, identifier_name);
-    if (var_id != 0) {
-        return tac_make_variable(var_id, 0);
-    }
-
-    // Final fallback: use hardcoded mappings for compatibility
-    // Map function parameters systematically
-    if (strcmp(identifier_name, "a") == 0) {
-        return tac_make_variable(1, 0);  // First parameter: a = v1
-    } else if (strcmp(identifier_name, "b") == 0) {
-        return tac_make_variable(2, 0);  // Second parameter: b = v2
-    } else if (strcmp(identifier_name, "c") == 0) {
-        return tac_make_variable(3, 0);  // Third parameter: c = v3
-    } 
-    // Map common local variables 
-    else if (strcmp(identifier_name, "result") == 0) {
-        return tac_make_variable(1, 0);  // Local variable: result = v1 (first local)
-    } else if (strcmp(identifier_name, "x") == 0) {
-        return tac_make_variable(1, 0);  // Local variable: x = v1
-    } else if (strcmp(identifier_name, "y") == 0) {
-        return tac_make_variable(2, 0);  // Local variable: y = v2
-    } else if (strcmp(identifier_name, "z") == 0) {
-        return tac_make_variable(3, 0);  // Local variable: z = v3
-    } else if (strcmp(identifier_name, "sum") == 0) {
-        return tac_make_variable(1, 0);  // Local variable: sum = v1
-    } else if (strcmp(identifier_name, "prod") == 0) {
-        return tac_make_variable(2, 0);  // Local variable: prod = v2
-    } else if (strcmp(identifier_name, "i") == 0) {
-        return tac_make_variable(2, 0);  // Loop variable: i = v2 (should be second variable after sum)
-    } else if (strcmp(identifier_name, "j") == 0) {
-        return tac_make_variable(6, 0);  // Loop variable: j = v6
-    } else if (strcmp(identifier_name, "k") == 0) {
-        return tac_make_variable(7, 0);  // Loop variable: k = v7
-    } else if (strcmp(identifier_name, "n") == 0) {
-        return tac_make_variable(8, 0);  // Counter variable: n = v8
-    } else if (strcmp(identifier_name, "temp") == 0) {
-        return tac_make_variable(9, 0);  // Temporary variable: temp = v9
-    } else {
-        // For unknown identifiers, use a hash-based approach to get consistent mapping
-        // This ensures the same identifier always maps to the same variable ID
-        uint32_t hash = 0;
-        for (int i = 0; identifier_name[i] != '\0'; i++) {
-            hash = hash * 31 + (unsigned char)identifier_name[i];
-        }
-        uint16_t hash_var_id = (hash % 20) + 1;  // Map to v1-v20
-        return tac_make_variable(hash_var_id, 0);
-    }
+    // Create TAC operand using symbol index as variable ID
+    return tac_make_variable(symbol_idx, 0);
 }
 
 /**
@@ -1133,15 +1018,15 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
         }
         
         if (found) {
-            func_operand = tac_make_immediate_int(target_label);
+            func_operand = TAC_MAKE_LABEL(target_label);
         } else {
             // Function not found in table - fallback to label 1
-            func_operand = tac_make_immediate_int(1);
+            func_operand = TAC_MAKE_LABEL(1);
             builder->warning_count++;
         }
     } else {
         // Cannot extract function name - fallback to label 1  
-        func_operand = tac_make_immediate_int(1);
+        func_operand = TAC_MAKE_LABEL(1);
         builder->warning_count++;
     }
 
@@ -1193,32 +1078,6 @@ void tac_builder_print_stats(TACBuilder* builder) {
     tacstore_print_stats();
 }
 
-/**
- * @brief Validate TAC operand
- */
-int tac_validate_operand(TACOperand operand) {
-    switch (operand.type) {
-        case TAC_OP_NONE:
-            return 1;  // Always valid
-
-        case TAC_OP_TEMP:
-        case TAC_OP_VAR:
-            return operand.data.variable.id > 0;
-
-        case TAC_OP_IMMEDIATE:
-            return 1;  // Any immediate value is valid
-
-        case TAC_OP_LABEL:
-            return operand.data.label.offset > 0;
-
-        case TAC_OP_FUNCTION:
-            return operand.data.function.func_id > 0;
-
-        default:
-            return 0;  // Unknown type
-    }
-}
-
 uint32_t tac_builder_get_main_address(TACBuilder* builder) {
     if (!builder) {
         return 0;
@@ -1255,16 +1114,15 @@ static int tac_builder_load_symbols(TACBuilder* builder) {
     
     // Get the total number of symbols
     uint32_t symbol_count = symtab_get_count();
-    printf("DEBUG: Loading %u symbols from symbol table\n", symbol_count);
     
     if (symbol_count == 0) {
-        printf("DEBUG: No symbols found in symbol table\n");
         return 0;
     }
     
     // Scan all symbols and load function symbols
     for (uint32_t i = 1; i <= symbol_count; i++) {  // Symbol indices start at 1
         SymTabEntry entry = symtab_get(i);
+        
         if (entry.type == SYM_FUNCTION) {
             if (builder->function_table.count >= 32) {
                 printf("Warning: Function table full, skipping symbol %u\n", i);
@@ -1273,6 +1131,7 @@ static int tac_builder_load_symbols(TACBuilder* builder) {
             
             // Get function name from string store
             char* func_name = sstore_get(entry.name);
+            
             if (func_name) {
                 uint32_t func_idx = builder->function_table.count;
                 
@@ -1290,24 +1149,37 @@ static int tac_builder_load_symbols(TACBuilder* builder) {
                 // Check if this is the entry point function (main, or first function if no main)
                 if (strcmp(func_name, "main") == 0) {
                     builder->function_table.main_function_idx = func_idx;
-                    printf("DEBUG: Found main function at index %u\n", func_idx);
                 } else if (builder->function_table.main_function_idx == (uint32_t)-1) {
                     // If no main found yet, use the first function as fallback
                     builder->function_table.main_function_idx = func_idx;
-                    printf("DEBUG: Using first function '%s' as entry point at index %u\n", func_name, func_idx);
                 }
                 
                 builder->function_table.count++;
-                printf("DEBUG: Loaded function '%s' at index %u\n", func_name, func_idx);
             }
         }
     }
     
-    printf("DEBUG: Loaded %u functions from symbol table\n", builder->function_table.count);
-    if (builder->function_table.main_function_idx != (uint32_t)-1) {
-        char* entry_name = builder->function_table.function_names[builder->function_table.main_function_idx];
-        printf("DEBUG: Entry point function: '%s' at index %u\n", entry_name, builder->function_table.main_function_idx);
+    return 1;
+}
+
+/**
+ * @brief Export function table to TAC printer for label resolution
+ */
+void tac_builder_export_function_table(TACBuilder* builder) {
+    if (!builder) {
+        return;
     }
     
-    return 1;
+    // Create a TAC printer function table
+    static TACPrinterFunctionTable printer_table;
+    printer_table.count = builder->function_table.count;
+    
+    // Copy function names and label IDs
+    for (uint32_t i = 0; i < builder->function_table.count && i < 32; i++) {
+        printer_table.function_names[i] = builder->function_table.function_names[i];
+        printer_table.label_ids[i] = builder->function_table.label_ids[i];
+    }
+    
+    // Set the function table in the TAC printer
+    tac_printer_set_function_table(&printer_table);
 }

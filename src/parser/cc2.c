@@ -144,6 +144,10 @@ static int cc2_process_all_ast_nodes(void) {
     }
 
     printf("DEBUG: Total nodes processed: %d\n", node_count);
+    
+    // Export function table to TAC printer for proper function name resolution
+    tac_builder_export_function_table(&cc2_state.tac_builder);
+    
     return node_count;
 }
 

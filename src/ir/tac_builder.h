@@ -34,14 +34,6 @@ typedef struct TACBuilder {
         uint32_t count;              // Number of functions
         uint32_t main_function_idx;  // Index of main function (-1 if not found)
     } function_table;
-    
-    // Variable mapping table for consistent variable assignment
-    struct {
-        char* variable_names[64];    // Variable name storage
-        uint16_t variable_ids[64];   // Corresponding TAC variable IDs (v1, v2, etc.)
-        uint32_t count;              // Number of variables
-        uint16_t next_variable_id;   // Next variable ID to assign
-    } variable_table;
 } TACBuilder;
 
 // TAC builder initialization and cleanup
@@ -124,5 +116,11 @@ uint32_t tac_builder_get_main_address(TACBuilder* builder);
  * @return Label ID for main function entry point, or 0 if not found
  */
 uint32_t tac_builder_get_entry_label(TACBuilder* builder);
+
+/**
+ * @brief Export function table to TAC printer for label resolution
+ * @param builder TAC builder instance
+ */
+void tac_builder_export_function_table(TACBuilder* builder);
 
 #endif  // SRC_IR_TAC_BUILDER_H_
