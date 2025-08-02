@@ -151,5 +151,128 @@ SymIdx_t symtab_get_count(void) {
   return (SymIdx_t)(end_pos / sizeof(SymTabEntry));
 }
 
+//============================================================================//
+// C99 CONVENIENCE FUNCTIONS
+//============================================================================//
+
+/**
+ * @brief Add a C99-enhanced symbol with flags
+ */
+SymIdx_t symtab_add_c99_symbol(SymType type, sstore_pos_t name, 
+                               int scope_depth, unsigned int flags) {
+    SymTabEntry entry = {0};
+    entry.type = type;
+    entry.name = name;
+    entry.scope_depth = scope_depth;
+    entry.flags = flags;
+    entry.type_idx = 0;  // To be filled by type system
+    return symtab_add(&entry);
+}
+
+/**
+ * @brief Set C99 flags on existing symbol
+ */
+int symtab_set_c99_flags(SymIdx_t idx, unsigned int flags) {
+    if (fpsym == NULL || idx == 0) {
+        return 1;  // Error
+    }
+    
+    SymTabEntry entry = symtab_get(idx);
+    if (entry.type == SYM_FREE) {
+        return 1;  // Symbol doesn't exist
+    }
+    
+    entry.flags = flags;
+    return (symtab_update(idx, &entry) != 0) ? 0 : 1;
+}
+
+/**
+ * @brief Get C99 flags from symbol
+ */
+int symtab_get_c99_flags(SymIdx_t idx) {
+    if (fpsym == NULL || idx == 0) {
+        return 0;
+    }
+    
+    SymTabEntry entry = symtab_get(idx);
+    return entry.flags;
+}
+
+/**
+ * @brief Check if symbol has specific C99 feature flag
+ */
+int symtab_is_c99_feature(SymIdx_t idx, unsigned int flag) {
+    int flags = symtab_get_c99_flags(idx);
+    return (flags & flag) != 0;
+}
+
+/**
+ * @brief C99-compliant symbol lookup in scope hierarchy
+ */
+SymIdx_t symtab_lookup_in_scope(sstore_pos_t name, int max_scope_depth) {
+    if (fpsym == NULL) {
+        return 0;
+    }
+    
+    SymIdx_t count = symtab_get_count();
+    SymIdx_t best_match = 0;
+    int best_scope_depth = -1;
+    
+    // C99 scoping: innermost scope wins
+    for (SymIdx_t i = 1; i <= count; i++) {
+        SymTabEntry entry = symtab_get(i);
+        
+        if (entry.name == name && 
+            entry.scope_depth <= max_scope_depth &&
+            entry.scope_depth > best_scope_depth) {
+            best_match = i;
+            best_scope_depth = entry.scope_depth;
+        }
+    }
+    
+    return best_match;
+}
+
+/**
+ * @brief Set VLA-specific information
+ */
+void symtab_set_vla_info(SymIdx_t idx, unsigned short size_expr_idx, 
+                         unsigned char dimensions) {
+    if (fpsym == NULL || idx == 0) {
+        return;
+    }
+    
+    SymTabEntry entry = symtab_get(idx);
+    if (entry.type == SYM_FREE) {
+        return;
+    }
+    
+    entry.flags |= SYM_FLAG_VLA;
+    entry.extra.vla.size_expr_idx = size_expr_idx;
+    entry.extra.vla.dimensions = dimensions;
+    
+    symtab_update(idx, &entry);
+}
+
+/**
+ * @brief Set function-specific information
+ */
+void symtab_set_function_info(SymIdx_t idx, unsigned short param_count,
+                              unsigned short first_param) {
+    if (fpsym == NULL || idx == 0) {
+        return;
+    }
+    
+    SymTabEntry entry = symtab_get(idx);
+    if (entry.type != SYM_FUNCTION) {
+        return;
+    }
+    
+    entry.extra.function.param_count = param_count;
+    entry.extra.function.first_param = first_param;
+    
+    symtab_update(idx, &entry);
+}
+
 
 

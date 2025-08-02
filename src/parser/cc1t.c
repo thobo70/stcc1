@@ -15,6 +15,7 @@
 #include "../storage/astore.h"
 #include "../storage/symtab.h"
 #include "../ast/ast_types.h"
+#include "../utils/hmapbuf.h"
 
 // Function prototypes
 static const char* ast_type_to_string(ASTNodeType type);
@@ -97,6 +98,15 @@ static const char* ast_type_to_string(ASTNodeType type) {
         case AST_LIT_FLOAT: return "LIT_FLOAT";
         case AST_LIT_CHAR: return "LIT_CHAR";
         case AST_LIT_STRING: return "LIT_STRING";
+        
+        // C99-specific node types
+        case AST_EXPR_DESIGNATED_FIELD: return "DESIGNATED_FIELD";
+        case AST_EXPR_DESIGNATED_INDEX: return "DESIGNATED_INDEX"; 
+        case AST_INITIALIZER: return "INITIALIZER"; 
+        case AST_PARAM_VARIADIC: return "PARAM_VARIADIC";
+        case AST_TYPE_COMPLEX: return "TYPE_COMPLEX";
+        case AST_TYPE_IMAGINARY: return "TYPE_IMAGINARY";
+        case AST_LIT_COMPLEX: return "LIT_COMPLEX";
 
         default: return "UNKNOWN";
     }
@@ -117,7 +127,12 @@ static const char* sym_type_to_string(SymType type) {
         case SYM_UNION: return "UNION";
         case SYM_ENUM: return "ENUM";
         case SYM_CONSTANT: return "CONSTANT";
-        case SYM_UNKOWN: return "UNKNOWN";
+        case SYM_UNKNOWN: return "UNKNOWN";                      // Fixed typo
+        // C99-specific types
+        case SYM_VLA_PARAMETER: return "VLA_PARAM";
+        case SYM_FLEXIBLE_MEMBER: return "FLEX_MEMBER";
+        case SYM_ANONYMOUS_STRUCT: return "ANON_STRUCT";
+        case SYM_UNIVERSAL_CHAR: return "UNIV_CHAR";
         default: return "INVALID";
     }
 }
@@ -159,14 +174,21 @@ static void get_node_value_string(ASTNode *node, char *buffer, size_t buffer_siz
             }
             break;
         case AST_EXPR_IDENTIFIER:
-            if (node->binary.value.string_pos != 0) {
-                snprintf(buffer, buffer_size, " '%s'", sstore_get(node->binary.value.string_pos));
-            } else if (node->binary.value.symbol_idx != 0) {
+            // For identifiers, check symbol_idx first (primary reference)
+            if (node->binary.value.symbol_idx != 0) {
                 SymTabEntry sym = symtab_get(node->binary.value.symbol_idx);
                 if (sym.name != 0) {
+                    char* sym_name = sstore_get(sym.name);
                     snprintf(buffer, buffer_size, " '%s' (sym:%d)", 
-                            sstore_get(sym.name), node->binary.value.symbol_idx);
+                            sym_name ? sym_name : "(null)", node->binary.value.symbol_idx);
+                } else {
+                    snprintf(buffer, buffer_size, " (sym:%d name=0)", node->binary.value.symbol_idx);
                 }
+            } else if (node->binary.value.string_pos != 0) {
+                // Fallback for identifiers that only have string position (shouldn't happen in correct code)
+                snprintf(buffer, buffer_size, " '%s' (string_only)", sstore_get(node->binary.value.string_pos));
+            } else {
+                snprintf(buffer, buffer_size, " (no reference)");
             }
             break;
         case AST_EXPR_BINARY_OP:
@@ -177,6 +199,8 @@ static void get_node_value_string(ASTNode *node, char *buffer, size_t buffer_siz
             snprintf(buffer, buffer_size, " (operand:%d)", node->unary.operand);
             break;
         case AST_VAR_DECL:
+        case AST_FUNCTION_DEF:
+        case AST_FUNCTION_DECL:
             snprintf(buffer, buffer_size, " (sym:%d, init:%d, type:%d)", 
                     node->declaration.symbol_idx, node->declaration.initializer, node->declaration.type_idx);
             break;
@@ -272,12 +296,42 @@ static void print_ast_tree_recursive(ASTNodeIdx_t idx, const char* prefix, int i
             
         case AST_STMT_COMPOUND:
             if (node.compound.declarations != 0) children[child_count++] = node.compound.declarations;
-            if (node.compound.statements != 0) children[child_count++] = node.compound.statements;
+            if (node.compound.statements != 0) {
+                // Follow the statement chain starting from the first statement
+                ASTNodeIdx_t current_stmt = node.compound.statements;
+                while (current_stmt != 0 && child_count < 8) {  // Limit to prevent infinite loops
+                    children[child_count++] = current_stmt;
+                    
+                    // Get the next statement in the chain (stored in child2)
+                    HBNode *stmt_node = HBGet(current_stmt, HBMODE_AST);
+                    if (stmt_node && stmt_node->ast.children.child2 != 0 && 
+                        stmt_node->ast.children.child2 != current_stmt) {  // Prevent cycles
+                        current_stmt = stmt_node->ast.children.child2;
+                    } else {
+                        break;  // End of chain
+                    }
+                }
+            }
             break;
             
         case AST_EXPR_CALL:
             if (node.call.function != 0) children[child_count++] = node.call.function;
             if (node.call.arguments != 0) children[child_count++] = node.call.arguments;
+            break;
+            
+        case AST_VAR_DECL:
+        case AST_FUNCTION_DECL:
+        case AST_FUNCTION_DEF:
+        case AST_PARAM_DECL:
+            // Declaration nodes use the declaration structure
+            if (node.declaration.initializer != 0) children[child_count++] = node.declaration.initializer;
+            // Note: Don't traverse symbol_idx or type_idx as these are indices, not child nodes
+            break;
+            
+        case AST_STMT_RETURN:
+            // Return statement - child1 is the return expression
+            if (node.children.child1 != 0 && node.children.child1 != idx) 
+                children[child_count++] = node.children.child1;
             break;
             
         default:
@@ -413,6 +467,37 @@ static void print_symbol_table(const char* symfile_path) {
             printf("Scope depth %d (%s): %d symbols\n", depth, scope_name, scope_counts[depth]);
         }
     }
+    
+    // C99 FLAGS ANALYSIS
+    printf("\n=== C99 FLAGS ANALYSIS ===\n");
+    int c99_flag_counts[13] = {0}; // Track all C99 flags
+    const char* c99_flag_names[] = {
+        "inline", "restrict", "VLA", "flexible", "complex", "imaginary",
+        "variadic", "universal_char", "designated", "compound_lit", "mixed_decl", "const", "volatile"
+    };
+    const unsigned int c99_flag_values[] = {
+        SYM_FLAG_INLINE, SYM_FLAG_RESTRICT, SYM_FLAG_VLA, SYM_FLAG_FLEXIBLE,
+        SYM_FLAG_COMPLEX, SYM_FLAG_IMAGINARY, SYM_FLAG_VARIADIC, 
+        SYM_FLAG_UNIVERSAL_CHAR, SYM_FLAG_DESIGNATED, SYM_FLAG_COMPOUND_LIT,
+        SYM_FLAG_MIXED_DECL, SYM_FLAG_CONST, SYM_FLAG_VOLATILE
+    };
+    
+    for (SymIdx_t idx = 1; idx <= max_entries; idx++) {
+        SymTabEntry entry = symtab_get(idx);
+        if (entry.type != SYM_FREE) {
+            for (int i = 0; i < 13; i++) {
+                if (entry.flags & c99_flag_values[i]) {
+                    c99_flag_counts[i]++;
+                }
+            }
+        }
+    }
+    
+    for (int i = 0; i < 13; i++) {
+        if (c99_flag_counts[i] > 0) {
+            printf("C99 %s symbols: %d\n", c99_flag_names[i], c99_flag_counts[i]);
+        }
+    }
 
     // Print symbol type statistics
     printf("\n=== SYMBOL TYPE STATISTICS ===\n");
@@ -456,6 +541,9 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Usage: %s <sstorefile> <astfile> <symfile>\n", argv[0]);
         return 1;
     }
+
+    // Initialize hash map buffer system for AST node access
+    HBInit();
 
     // Open string store
     if (sstore_open(argv[1]) != 0) {
@@ -517,7 +605,7 @@ int main(int argc, char *argv[]) {
         // Also show flat list for debugging
         printf("\n=== ALL AST NODES (FLAT VIEW) ===\n");
         printf("┌─────┬─────────────────────┬───────┬───────┬──────┬────────────────────────────────────────┐\n");
-        printf("│ Idx │        Type         │ Token │ Flags │ TIdx │                Details                │\n");
+        printf("│ Idx │        Type         │ Token │ Flags │ TIdx │                Details                 │\n");
         printf("├─────┼─────────────────────┼───────┼───────┼──────┼────────────────────────────────────────┤\n");
         
         for (ASTNodeIdx_t i = 1; i < current_idx; i++) {
@@ -557,6 +645,7 @@ int main(int argc, char *argv[]) {
     symtab_close();
     astore_close();
     sstore_close();
+    HBEnd();
 
     return 0;
 }

@@ -48,11 +48,16 @@ void tac_print_operand(TACOperand operand) {
             // Get the actual variable name from symbol table - no fallbacks allowed
             if (operand.data.variable.id > 0) {
                 SymTabEntry entry = symtab_get(operand.data.variable.id);
-                char* var_name = sstore_get(entry.name);
-                if (var_name && strlen(var_name) > 0) {
-                    printf("%s", var_name);
+                if (entry.name > 0) {
+                    char* var_name = sstore_get(entry.name);
+                    if (var_name && strlen(var_name) > 0) {
+                        printf("%s", var_name);
+                    } else {
+                        fprintf(stderr, "ERROR: Variable symbol %d has no name in string store\n", operand.data.variable.id);
+                        printf("ERROR_VAR_%d", operand.data.variable.id);
+                    }
                 } else {
-                    fprintf(stderr, "ERROR: Variable symbol %d has no name in string store\n", operand.data.variable.id);
+                    fprintf(stderr, "ERROR: Variable symbol %d has entry.name=0\n", operand.data.variable.id);
                     printf("ERROR_VAR_%d", operand.data.variable.id);
                 }
             } else {

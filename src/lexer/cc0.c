@@ -179,7 +179,11 @@ TokenType_t keywordTypes[] = {
   {SET_LEXEME_LEN("struct"), TOKEN_TYPE_NAME(T_STRUCT), 0},
   {SET_LEXEME_LEN("union"), TOKEN_TYPE_NAME(T_UNION), 0},
   {SET_LEXEME_LEN("enum"), TOKEN_TYPE_NAME(T_ENUM), 0},
-  {SET_LEXEME_LEN("short"), TOKEN_TYPE_NAME(T_SHORT), 0},
+  {SET_LEXEME_LEN("inline"), TOKEN_TYPE_NAME(T_INLINE), 0},
+  {SET_LEXEME_LEN("restrict"), TOKEN_TYPE_NAME(T_RESTRICT), 0},
+  {SET_LEXEME_LEN("_Bool"), TOKEN_TYPE_NAME(T_BOOL), 0},
+  {SET_LEXEME_LEN("_Complex"), TOKEN_TYPE_NAME(T_COMPLEX), 0},
+  {SET_LEXEME_LEN("_Imaginary"), TOKEN_TYPE_NAME(T_IMAGINARY), 0},
   {NULL, 0, TOKEN_TYPE_NAME(T_UNKNOWN), 0}  // Sentinel value to mark the end of the array
 };
 

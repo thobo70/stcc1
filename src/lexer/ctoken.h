@@ -101,6 +101,11 @@ typedef enum TokenID_t {
   T_LITINT,
   T_LITFLOAT,
   T_ELLIPSIS,
+  T_INLINE,
+  T_RESTRICT,
+  T_BOOL,
+  T_COMPLEX,
+  T_IMAGINARY,
   T_UNKNOWN
 } TokenID_t;
 

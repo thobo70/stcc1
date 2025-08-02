@@ -13,7 +13,7 @@
  * - Analyzes control flow and basic blocks
  * - Similar to cc0t (token inspection) and cc1t (AST inspection)
  *
- * Usage: cc2t <tacfile>
+ * Usage: cc2t <tacfile> <symfile> [sstorefile]
  */
 
 #include <stdio.h>
@@ -24,12 +24,19 @@
 #include "../ir/tac_store.h"
 #include "../ir/tac_printer.h"
 #include "../ir/tac_types.h"
+#include "../storage/sstore.h"
+#include "../storage/symtab.h"
 
 /**
  * @brief Display usage information
  */
 static void show_usage(const char* program_name) {
-    printf("Usage: %s <tacfile>\n", program_name);
+    printf("Usage: %s <tacfile> <symfile> [sstorefile]\n", program_name);
+    printf("\n");
+    printf("Arguments:\n");
+    printf("  tacfile     - TAC instruction file to analyze\n");
+    printf("  symfile     - Symbol table file for variable name resolution\n");
+    printf("  sstorefile  - String store file (optional)\n");
     printf("\n");
     printf("TAC Inspection Tool for STCC1 Compiler\n");
     printf("Displays Three-Address Code instructions and analysis\n");
@@ -229,18 +236,93 @@ static void show_optimization_flags(void) {
 }
 
 /**
+ * @brief Reconstruct function table from symbol table for proper label names
+ */
+static void reconstruct_function_table(void) {
+    static TACPrinterFunctionTable printer_table;
+    printer_table.count = 0;
+    
+    // First, collect all function symbols
+    SymIdx_t sym_count = symtab_get_count();
+    struct {
+        const char* name;
+        uint16_t symbol_idx;
+    } functions[32];
+    uint32_t func_count = 0;
+    
+    for (SymIdx_t i = 1; i <= sym_count && func_count < 32; i++) {
+        SymTabEntry entry = symtab_get(i);
+        
+        // Look for function symbols
+        if (entry.type == SYM_FUNCTION && entry.name > 0) {
+            const char* func_name = sstore_get(entry.name);
+            if (func_name && strlen(func_name) > 0) {
+                functions[func_count].name = func_name;
+                functions[func_count].symbol_idx = i;
+                func_count++;
+            }
+        }
+    }
+    
+    // Now scan TAC instructions to find which labels correspond to functions
+    // For now, assign labels sequentially - this is a limitation we'll fix later
+    for (uint32_t i = 0; i < func_count; i++) {
+        #pragma GCC diagnostic push
+        #pragma GCC diagnostic ignored "-Wcast-qual"
+        printer_table.function_names[i] = (char*)functions[i].name;
+        #pragma GCC diagnostic pop
+        
+        // Assign label IDs: main gets label 1, other functions get sequential IDs
+        if (strcmp(functions[i].name, "main") == 0) {
+            printer_table.label_ids[i] = 1;  // main is typically the first label
+        } else {
+            printer_table.label_ids[i] = i + 1;  // Sequential assignment
+        }
+        printer_table.count++;
+    }
+    
+    if (printer_table.count > 0) {
+        tac_printer_set_function_table(&printer_table);
+        printf("✓ Reconstructed function table with %u functions\n", printer_table.count);
+    }
+}
+
+/**
  * @brief Main function for CC2T TAC inspection tool
  */
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
+    if (argc < 3 || argc > 4) {
         show_usage(argv[0]);
         return 1;
     }
 
     const char* tac_file = argv[1];
+    const char* sym_file = argv[2];
+    const char* sstore_file = (argc == 4) ? argv[3] : NULL;
 
     printf("=== STCC1 TAC Inspection Tool (CC2T) ===\n");
-    printf("Analyzing TAC file: %s\n\n", tac_file);
+    printf("TAC file: %s\n", tac_file);
+    printf("Symbol table file: %s\n", sym_file);
+    if (sstore_file) {
+        printf("String store file: %s\n", sstore_file);
+    }
+    printf("\n");
+
+    // Load string store if provided
+    if (sstore_file) {
+        if (sstore_open(sstore_file) != 0) {
+            fprintf(stderr, "Error: Cannot load string store %s\n", sstore_file);
+            return 1;
+        }
+        printf("✓ String store loaded successfully\n");
+    }
+
+    // Load symbol table
+    if (symtab_open(sym_file) != 0) {
+        fprintf(stderr, "Error: Cannot load symbol table %s\n", sym_file);
+        return 1;
+    }
+    printf("✓ Symbol table loaded successfully\n\n");
 
     // Show file information
     show_tac_header(tac_file);
@@ -250,6 +332,9 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Error: Cannot open TAC file %s\n", tac_file);
         return 1;
     }
+
+    // Reconstruct function table from symbol table for proper label names
+    reconstruct_function_table();
 
     // Display all TAC instructions
     printf("=== TAC Instructions ===\n");

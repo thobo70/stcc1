@@ -104,6 +104,15 @@ typedef enum {
     AST_LIT_FLOAT,
     AST_LIT_CHAR,
     AST_LIT_STRING,
+    
+    // C99-specific node types (140-149)
+    AST_EXPR_DESIGNATED_FIELD = 140,    // .field = value (C99 6.7.8.7)
+    AST_EXPR_DESIGNATED_INDEX,          // [index] = value (C99 6.7.8.7)
+    AST_INITIALIZER,                    // Initializer list { ... } (C99 6.7.8)
+    AST_PARAM_VARIADIC,                 // ... parameter (C99 6.7.5.3)
+    AST_TYPE_COMPLEX,                   // _Complex type (C99 6.2.5.11)
+    AST_TYPE_IMAGINARY,                 // _Imaginary type (C99 6.2.5.11)
+    AST_LIT_COMPLEX,                    // Complex literal (C99 6.2.5.11)
 
     AST_TYPE_COUNT
 } ASTNodeType;
@@ -130,7 +139,17 @@ typedef enum {
     AST_FLAG_OPTIMIZED    = 0x0008,  // Optimization applied
     AST_FLAG_CODEGEN      = 0x0010,  // Code generation complete
     AST_FLAG_ERROR        = 0x8000,  // Error in this node
-    AST_FLAG_MODIFIED     = 0x4000   // Node has been modified
+    AST_FLAG_MODIFIED     = 0x4000,  // Node has been modified
+    
+    // C99-specific flags
+    AST_FLAG_C99_VLA            = 0x0100,  // Variable length arrays
+    AST_FLAG_C99_FLEXIBLE       = 0x0200,  // Flexible array members  
+    AST_FLAG_C99_INLINE         = 0x0400,  // Inline functions
+    AST_FLAG_C99_RESTRICT       = 0x0800,  // Restrict qualifier
+    AST_FLAG_C99_DESIGNATED     = 0x1000,  // Designated initializers
+    AST_FLAG_C99_COMPOUND_LIT   = 0x2000,  // Compound literals
+    AST_FLAG_C99_MIXED_DECL     = 0x4000,  // Mixed declarations/statements
+    AST_FLAG_C99_UNIVERSAL_CHAR = 0x8000   // Universal character names
 } ASTNodeFlags;
 
 /**
@@ -179,7 +198,8 @@ typedef struct ASTNode {
             ASTNodeIdx_t declarations;                    // 2 bytes
             ASTNodeIdx_t statements;                      // 2 bytes
             SymTabIdx_t scope_idx;                        // 2 bytes
-            char padding[8];                              // 8 bytes
+            unsigned short c99_mixed_count;               // 2 bytes - mixed decl count
+            char padding[6];                              // 6 bytes
         } compound;
 
         struct {
@@ -202,8 +222,32 @@ typedef struct ASTNode {
             TypeIdx_t type_idx;                           // 2 bytes
             ASTNodeIdx_t initializer;                     // 2 bytes
             char storage_class;                           // 1 byte
-            char padding[7];                              // 7 bytes
+            unsigned char c99_specifier;                  // 1 byte - inline/restrict flags
+            char padding[6];                              // 6 bytes
         } declaration;
+        
+        // C99-specific structures
+        struct {
+            sstore_pos_t field_name;                      // 2 bytes - field name
+            ASTNodeIdx_t value_expr;                      // 2 bytes - initialization value
+            char padding[10];                             // 10 bytes
+        } designated;
+        
+        struct {
+            ASTNodeIdx_t base_type;                       // 2 bytes - base type for complex
+            union {
+                struct {
+                    ASTNodeIdx_t real_part;               // 2 bytes - real component
+                    ASTNodeIdx_t imag_part;               // 2 bytes - imaginary component  
+                } complex_literal;
+                struct {
+                    ASTNodeIdx_t vla_size_expr;           // 2 bytes - VLA size expression
+                    unsigned char dimensions;             // 1 byte - array dimensions
+                    char padding[1];                      // 1 byte
+                } vla_info;
+            } c99_data;                                   // 4 bytes
+            char padding[6];                              // 6 bytes
+        } c99_enhanced;
 
         // Raw access for maximum flexibility
         char raw_data[14];                                // 14 bytes total

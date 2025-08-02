@@ -52,7 +52,7 @@ OBJ0t = $(OBJDIR)/cc0t.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/hash.o
 OBJ1 = $(OBJDIR)/cc1.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/hash.o $(OBJDIR)/symtab.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/error_core.o $(OBJDIR)/error_stages.o $(OBJDIR)/ast_builder.o $(OBJDIR)/tac_store.o $(OBJDIR)/tac_builder.o $(OBJDIR)/tac_printer.o
 
 # cc1t for AST and symbol table inspection
-OBJ1t = $(OBJDIR)/cc1t.o $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o
+OBJ1t = $(OBJDIR)/cc1t.o $(OBJDIR)/sstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o
 
 # cc2 for TAC generation
 OBJ2 = $(OBJDIR)/cc2.o $(OBJDIR)/sstore.o $(OBJDIR)/tstore.o $(OBJDIR)/astore.o $(OBJDIR)/symtab.o $(OBJDIR)/hash.o $(OBJDIR)/hmapbuf.o $(OBJDIR)/tac_store.o $(OBJDIR)/tac_builder.o $(OBJDIR)/tac_printer.o

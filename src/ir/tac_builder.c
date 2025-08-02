@@ -502,9 +502,16 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
             return var_operand;
 
         case AST_FUNCTION_DEF:
-            // Extract function name from AST node
+            // Extract function name from symbol table using symbol_idx
             {
-                char* func_name = sstore_get(ast_node.binary.value.string_pos);
+                SymTabIdx_t func_symbol_idx = ast_node.declaration.symbol_idx;
+                char* func_name = NULL;
+                
+                if (func_symbol_idx != 0) {
+                    SymTabEntry symbol = symtab_get(func_symbol_idx);
+                    func_name = sstore_get(symbol.name);
+                }
+                
                 if (func_name) {
                     // Find this function in the pre-loaded function table
                     uint32_t func_idx = (uint32_t)-1;
@@ -529,7 +536,7 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                         return TAC_OPERAND_NONE;
                     }
                 } else {
-                    fprintf(stderr, "ERROR: Could not extract function name from AST\n");
+                    fprintf(stderr, "ERROR: Could not extract function name from AST (symbol_idx=%d)\n", func_symbol_idx);
                     builder->error_count++;
                     return TAC_OPERAND_NONE;
                 }

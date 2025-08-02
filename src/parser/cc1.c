@@ -27,6 +27,7 @@
 #include "../storage/symtab.h"
 #include "../utils/hmapbuf.h"
 #include "../error/error_core.h"
+#include "../error/error_stages.h"
 // Enhanced cc1 with error handling and core AST capabilities
 
 // Type specifier information for complex type parsing
@@ -36,6 +37,19 @@ typedef struct {
     int has_short;       // 0 = not specified, 1 = short
     int base_type;       // T_INT, T_CHAR, T_FLOAT, T_DOUBLE, T_VOID, or 0 for unspecified
     int is_valid;        // 1 if valid combination, 0 otherwise
+    // C99 storage specifiers and qualifiers
+    int has_inline;      // C99 inline function specifier
+    int has_restrict;    // C99 restrict qualifier
+    int has_const;       // const qualifier
+    int has_volatile;    // volatile qualifier
+    int has_static;      // static storage class
+    int has_extern;      // extern storage class
+    int has_auto;        // auto storage class
+    int has_register;    // register storage class
+    int has_typedef;     // typedef storage class
+    int has_complex;     // C99 _Complex
+    int has_imaginary;   // C99 _Imaginary
+    int has_bool;        // C99 _Bool
 } TypeSpecifier_t;
 
 // Enhanced parser state for tracking context
@@ -60,20 +74,24 @@ ASTNodeIdx_t parse_function_definition(void);
 ASTNodeIdx_t parse_statement(void);
 ASTNodeIdx_t parse_expression(void);
 ASTNodeIdx_t parse_assignment_expression(void);
+ASTNodeIdx_t parse_conditional_expression(void);
 ASTNodeIdx_t parse_relational_expression(void);
 ASTNodeIdx_t parse_additive_expression(void);
 ASTNodeIdx_t parse_multiplicative_expression(void);
 ASTNodeIdx_t parse_unary_expression(void);
 ASTNodeIdx_t parse_postfix_expression(void);
 ASTNodeIdx_t parse_primary_expression(void);
+ASTNodeIdx_t parse_initializer_list(void);
+static sstore_pos_t parse_declarator(void);
 
 // Additional function prototypes
 static Token_t peek_token(void);
 static Token_t next_token(void);
 static int expect_token(TokenID_t expected);
 static ASTNodeIdx_t create_ast_node(ASTNodeType type, TokenIdx_t token_idx);
-static SymIdx_t add_symbol(sstore_pos_t name_pos, SymType type, TokenIdx_t token_idx);
+static SymIdx_t add_symbol_with_c99_flags(sstore_pos_t name_pos, SymType type, TokenIdx_t token_idx, TypeSpecifier_t *type_spec);
 static void parser_init(void);
+static const char* get_token_name(TokenID_t token_id);
 static void parser_cleanup(void);
 
 /**
@@ -95,6 +113,110 @@ static Token_t next_token(void) {
 }
 
 /**
+ * @brief Get human-readable name for token ID
+ * @param token_id Token ID to convert to name
+ * @return String representation of token
+ */
+static const char* get_token_name(TokenID_t token_id) {
+    switch (token_id) {
+        case T_EOF: return "EOF";
+        case T_INT: return "int";
+        case T_LONG: return "long";
+        case T_SHORT: return "short";
+        case T_FLOAT: return "float";
+        case T_DOUBLE: return "double";
+        case T_CHAR: return "char";
+        case T_VOID: return "void";
+        case T_RETURN: return "return";
+        case T_IF: return "if";
+        case T_ELSE: return "else";
+        case T_WHILE: return "while";
+        case T_FOR: return "for";
+        case T_DO: return "do";
+        case T_SWITCH: return "switch";
+        case T_CASE: return "case";
+        case T_DEFAULT: return "default";
+        case T_BREAK: return "break";
+        case T_CONTINUE: return "continue";
+        case T_GOTO: return "goto";
+        case T_SIZEOF: return "sizeof";
+        case T_TYPEDEF: return "typedef";
+        case T_EXTERN: return "extern";
+        case T_STATIC: return "static";
+        case T_AUTO: return "auto";
+        case T_REGISTER: return "register";
+        case T_CONST: return "const";
+        case T_VOLATILE: return "volatile";
+        case T_SIGNED: return "signed";
+        case T_UNSIGNED: return "unsigned";
+        case T_STRUCT: return "struct";
+        case T_UNION: return "union";
+        case T_ENUM: return "enum";
+        case T_LPAREN: return "(";
+        case T_RPAREN: return ")";
+        case T_LBRACE: return "{";
+        case T_RBRACE: return "}";
+        case T_LBRACKET: return "[";
+        case T_RBRACKET: return "]";
+        case T_SEMICOLON: return ";";
+        case T_COMMA: return ",";
+        case T_DOT: return ".";
+        case T_ASSIGN: return "=";
+        case T_PLUS: return "+";
+        case T_MINUS: return "-";
+        case T_MUL: return "*";
+        case T_DIV: return "/";
+        case T_MOD: return "%";
+        case T_AMPERSAND: return "&";
+        case T_PIPE: return "|";
+        case T_CARET: return "^";
+        case T_TILDE: return "~";
+        case T_LSHIFT: return "<<";
+        case T_RSHIFT: return ">>";
+        case T_LOGAND: return "&&";
+        case T_LOGOR: return "||";
+        case T_NOT: return "!";
+        case T_EQ: return "==";
+        case T_NEQ: return "!=";
+        case T_LT: return "<";
+        case T_GT: return ">";
+        case T_LTE: return "<=";
+        case T_GTE: return ">=";
+        case T_INC: return "++";
+        case T_DEC: return "--";
+        case T_PLUSEQ: return "+=";
+        case T_MINUSEQ: return "-=";
+        case T_MULEQ: return "*=";
+        case T_DIVEQ: return "/=";
+        case T_MODEQ: return "%=";
+        case T_ANDEQ: return "&=";
+        case T_OREQ: return "|=";
+        case T_XOREQ: return "^=";
+        case T_LSHIFTEQ: return "<<=";
+        case T_RSHIFTEQ: return ">>=";
+        case T_ARROW: return "->";
+        case T_QUESTION: return "?";
+        case T_COLON: return ":";
+        case T_EXCLAMATION: return "!";
+        case T_ID: return "identifier";
+        case T_LITINT: return "integer literal";
+        case T_LITFLOAT: return "float literal";
+        case T_LITCHAR: return "character literal";
+        case T_LITSTRING: return "string literal";
+        case T_ELLIPSIS: return "...";
+        // C99 specific tokens
+        case T_INLINE: return "inline";
+        case T_RESTRICT: return "restrict";
+        case T_BOOL: return "_Bool";
+        case T_COMPLEX: return "_Complex";
+        case T_IMAGINARY: return "_Imaginary";
+        case T_ERROR: return "error token";
+        case T_UNKNOWN: return "unknown token";
+        default: return "unknown token";
+    }
+}
+
+/**
  * @brief Check if current token matches expected type
  */
 static int expect_token(TokenID_t expected) {
@@ -104,10 +226,15 @@ static int expect_token(TokenID_t expected) {
         return 1;
     }
 
-    // Report syntax error using core error system
+    // Report syntax error using core error system with token information
+    Token_t current = peek_token();
+    char error_msg[256];
+    snprintf(error_msg, sizeof(error_msg), "Unexpected token '%s' at line %u", 
+             get_token_name(current.id), current.line);
+    
     SourceLocation_t location = error_create_location(parser_state.current_token);
     error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
-                     "Unexpected token", "Check syntax", "parser", NULL);
+                     error_msg, "Check syntax", "parser", NULL);
     return 0;
 }
 
@@ -160,15 +287,32 @@ static SymIdx_t lookup_symbol_in_scope(sstore_pos_t name_pos) {
     SymIdx_t best_match = 0;
     int best_scope_depth = -1;
     
+    // Get the name string to search for and COPY it to avoid sstore_get() buffer reuse
+    char* temp_name = sstore_get(name_pos);
+    if (!temp_name) {
+        return 0;
+    }
+    
+    // Make a local copy since sstore_get() uses a static buffer
+    char search_name[256];
+    strncpy(search_name, temp_name, sizeof(search_name) - 1);
+    search_name[sizeof(search_name) - 1] = '\0';
+    
     // Search all symbols for matches with this name
     uint32_t symbol_count = symtab_get_count();
     
     for (SymIdx_t i = 1; i <= symbol_count; i++) {
         SymTabEntry entry = symtab_get(i);
         
-        // Skip non-matching names
-        if (entry.name != name_pos) {
+        // Skip entries without names
+        if (entry.name == 0) {
             continue;
+        }
+        
+        // Compare actual string content, not positions
+        char* entry_name = sstore_get(entry.name);
+        if (!entry_name || strcmp(search_name, entry_name) != 0) {
+            continue; // Name doesn't match
         }
         
         // Check if this symbol is visible from current scope
@@ -194,15 +338,25 @@ static SymIdx_t lookup_symbol(sstore_pos_t name_pos) {
 }
 
 /**
- * @brief Add symbol to symbol table with C99 scope depth
+ * @brief Add symbol to symbol table with C99 flags from TypeSpecifier_t
  */
-static SymIdx_t add_symbol(sstore_pos_t name_pos, SymType type, TokenIdx_t token_idx) {
+static SymIdx_t add_symbol_with_c99_flags(sstore_pos_t name_pos, SymType type, TokenIdx_t token_idx, TypeSpecifier_t *type_spec) {
     SymTabEntry entry = {0};
     entry.type = type;
     entry.name = name_pos;
     entry.parent = 0;  // Not used in C99 scoping
     entry.line = token_idx;
     entry.scope_depth = parser_state.scope_depth;  // Record C99 scope depth
+
+    // Set C99 flags based on TypeSpecifier_t
+    unsigned int c99_flags = 0;
+    if (type_spec->has_inline) c99_flags |= SYM_FLAG_INLINE;
+    if (type_spec->has_restrict) c99_flags |= SYM_FLAG_RESTRICT;
+    if (type_spec->has_complex) c99_flags |= SYM_FLAG_COMPLEX;
+    if (type_spec->has_imaginary) c99_flags |= SYM_FLAG_IMAGINARY;
+    if (type_spec->has_const) c99_flags |= SYM_FLAG_CONST;
+    if (type_spec->has_volatile) c99_flags |= SYM_FLAG_VOLATILE;
+    entry.flags = c99_flags;
 
     SymIdx_t sym_idx = symtab_add(&entry);
     if (sym_idx == 0) {
@@ -228,14 +382,17 @@ ASTNodeIdx_t parse_primary_expression(void) {
             if (node_idx) {
                 HBNode *node = HBGet(node_idx, HBMODE_AST);
                 if (node) {
-                    // Look up the symbol index for this identifier
+                    // Look up the symbol index - this is REQUIRED for identifiers
                     SymIdx_t sym_idx = lookup_symbol(token.pos);
-                    if (sym_idx == 0) {
-                        // Symbol not found - store string position for name display
-                        node->ast.binary.value.string_pos = token.pos;  
-                    } else {
-                        // Store the symbol index in the identifier node  
+                    if (sym_idx != 0) {
+                        // Store symbol index - this is the only valid reference for identifiers
                         node->ast.binary.value.symbol_idx = sym_idx;
+                    } else {
+                        // ERROR: Undefined identifier - report semantic error and fail
+                        char* identifier_name = sstore_get(token.pos);
+                        semantic_error_undefined_symbol(token_idx, identifier_name);
+                        // Do not set any value - let the error handling decide what to do
+                        return 0; // Return invalid node index to propagate error
                     }
                 }
             }
@@ -295,12 +452,120 @@ ASTNodeIdx_t parse_primary_expression(void) {
             return expr;
         }
 
-        default:
+        case T_LBRACE: {
+            // C99 compound literal / initializer list
+            return parse_initializer_list();
+        }
+
+        default: {
+            Token_t current = peek_token();
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Expected primary expression, found '%s' at line %u", 
+                     get_token_name(current.id), current.line);
+            
             SourceLocation_t location = error_create_location(token_idx);
             error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
-                             "Expected primary expression", "Check expression syntax", "parser", NULL);
+                             error_msg, "Check expression syntax", "parser", NULL);
             return 0;
+        }
     }
+}
+
+/**
+ * @brief Parse C99 initializer lists with designated initializers
+ * Handles: { .field = value, [index] = value, value }
+ */
+ASTNodeIdx_t parse_initializer_list(void) {
+    TokenIdx_t token_idx = tstore_getidx();
+    
+    if (!expect_token(T_LBRACE)) {
+        return 0;
+    }
+    
+    ASTNodeIdx_t init_node = create_ast_node(AST_INITIALIZER, token_idx);
+    if (!init_node) return 0;
+    
+    ASTNodeIdx_t first_init = 0;
+    ASTNodeIdx_t last_init = 0;
+    
+    // Parse initializer elements
+    while (peek_token().id != T_RBRACE && peek_token().id != T_EOF) {
+        ASTNodeIdx_t element = 0;
+        
+        // Check for designated initializers
+        if (peek_token().id == T_DOT) {
+            // Field designator: .field = value
+            next_token(); // consume '.'
+            if (peek_token().id == T_ID) {
+                Token_t field_token = peek_token();
+                TokenIdx_t field_idx = tstore_getidx();
+                next_token(); // consume field name
+                
+                if (expect_token(T_ASSIGN)) {
+                    ASTNodeIdx_t value = parse_assignment_expression();
+                    element = create_ast_node(AST_EXPR_DESIGNATED_FIELD, field_idx);
+                    if (element) {
+                        HBNode *node = HBGet(element, HBMODE_AST);
+                        if (node) {
+                            node->ast.binary.left = 0; // Field name stored in token_idx
+                            node->ast.binary.right = value;
+                            node->ast.binary.value.string_pos = field_token.pos;
+                        }
+                    }
+                }
+            }
+        } else if (peek_token().id == T_LBRACKET) {
+            // Array designator: [index] = value
+            next_token(); // consume '['
+            ASTNodeIdx_t index = parse_expression();
+            if (expect_token(T_RBRACKET) && expect_token(T_ASSIGN)) {
+                ASTNodeIdx_t value = parse_assignment_expression();
+                element = create_ast_node(AST_EXPR_DESIGNATED_INDEX, token_idx);
+                if (element) {
+                    HBNode *node = HBGet(element, HBMODE_AST);
+                    if (node) {
+                        node->ast.binary.left = index;
+                        node->ast.binary.right = value;
+                    }
+                }
+            }
+        } else {
+            // Regular initializer element
+            element = parse_assignment_expression();
+        }
+        
+        // Chain initializer elements
+        if (element) {
+            if (!first_init) {
+                first_init = element;
+                last_init = element;
+            } else {
+                // Use child2 for chaining (similar to statement chaining)
+                HBNode *last_node = HBGet(last_init, HBMODE_AST);
+                if (last_node) {
+                    last_node->ast.children.child2 = element;
+                    last_init = element;
+                }
+            }
+        }
+        
+        // Handle comma or end
+        if (peek_token().id == T_COMMA) {
+            next_token(); // consume comma
+        } else {
+            break;
+        }
+    }
+    
+    expect_token(T_RBRACE);
+    
+    // Set up the initializer node
+    HBNode *init = HBGet(init_node, HBMODE_AST);
+    if (init) {
+        init->ast.children.child1 = first_init; // First initializer element
+    }
+    
+    return init_node;
 }
 
 /**
@@ -316,20 +581,21 @@ ASTNodeIdx_t parse_expression(void) {
  * Right-associative: a = b = c becomes a = (b = c)
  */
 ASTNodeIdx_t parse_assignment_expression(void) {
-    ASTNodeIdx_t left = parse_relational_expression();
+    ASTNodeIdx_t left = parse_conditional_expression();
     if (!left) return 0;
 
     Token_t token = peek_token();
-    if (token.id == T_ASSIGN) {
+    if (token.id == T_ASSIGN || token.id == T_MULEQ || token.id == T_DIVEQ || 
+        token.id == T_PLUSEQ || token.id == T_MINUSEQ || token.id == T_MODEQ) {
         TokenIdx_t token_idx = tstore_getidx();
-        next_token(); // consume '='
+        next_token(); // consume assignment operator
         
         // Assignment is right-associative, so parse another assignment expression
         ASTNodeIdx_t right = parse_assignment_expression();
         if (!right) {
             SourceLocation_t location = error_create_location(token_idx);
             error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
-                             "Expected right operand after '='", "Check assignment syntax", "parser", NULL);
+                             "Expected right operand after assignment operator", "Check assignment syntax", "parser", NULL);
             return left;
         }
 
@@ -344,6 +610,79 @@ ASTNodeIdx_t parse_assignment_expression(void) {
     }
 
     return left;
+}
+
+/**
+ * @brief Parse conditional expressions (ternary operator: condition ? true_expr : false_expr)
+ * Right-associative: a ? b : c ? d : e becomes a ? b : (c ? d : e)
+ * C99 standard: 6.5.15 Conditional operator
+ */
+ASTNodeIdx_t parse_conditional_expression(void) {
+    ASTNodeIdx_t condition = parse_relational_expression();
+    if (!condition) return 0;
+
+    Token_t token = peek_token();
+    if (token.id == T_QUESTION) {
+        TokenIdx_t token_idx = tstore_getidx();
+        next_token(); // consume '?'
+        
+        // Parse true expression
+        ASTNodeIdx_t true_expr = parse_expression();
+        if (!true_expr) {
+            Token_t current = peek_token();
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Expected expression after '?', found '%s' at line %u", 
+                     get_token_name(current.id), current.line);
+            
+            SourceLocation_t location = error_create_location(token_idx);
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             error_msg, "Check conditional expression syntax", "parser", NULL);
+            return condition;
+        }
+
+        // Expect ':' 
+        if (peek_token().id != T_COLON) {
+            Token_t current = peek_token();
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Expected ':' in conditional expression, found '%s' at line %u", 
+                     get_token_name(current.id), current.line);
+            
+            SourceLocation_t location = error_create_location(tstore_getidx());
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             error_msg, "Check conditional expression syntax", "parser", NULL);
+            return condition;
+        }
+        
+        next_token(); // consume ':'
+        
+        // Parse false expression (right-associative)
+        ASTNodeIdx_t false_expr = parse_conditional_expression();
+        if (!false_expr) {
+            Token_t current = peek_token();
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Expected expression after ':', found '%s' at line %u", 
+                     get_token_name(current.id), current.line);
+            
+            SourceLocation_t location = error_create_location(token_idx);
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             error_msg, "Check conditional expression syntax", "parser", NULL);
+            return condition;
+        }
+
+        // Create conditional expression node
+        ASTNodeIdx_t cond_node = create_ast_node(AST_EXPR_CONDITIONAL, token_idx);
+        if (cond_node) {
+            HBNode* hb_node = HBGet(cond_node, HBMODE_AST);
+            if (hb_node) {
+                hb_node->ast.conditional.condition = condition;
+                hb_node->ast.conditional.then_stmt = true_expr;
+                hb_node->ast.conditional.else_stmt = false_expr;
+            }
+        }
+        return cond_node;
+    }
+
+    return condition;
 }
 
 /**
@@ -407,9 +746,14 @@ ASTNodeIdx_t parse_additive_expression(void) {
         
         ASTNodeIdx_t right = parse_multiplicative_expression();
         if (!right) {
+            Token_t current = peek_token();
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Expected right operand, found '%s' at line %u", 
+                     get_token_name(current.id), current.line);
+            
             SourceLocation_t location = error_create_location(token_idx);
             error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
-                             "Expected right operand", "Check expression syntax", "parser", NULL);
+                             error_msg, "Check expression syntax", "parser", NULL);
             return left;
         }
 
@@ -486,6 +830,47 @@ ASTNodeIdx_t parse_postfix_expression(void) {
                 expect_token(T_RPAREN);
             }
             left = call_node;
+        } else if (token.id == T_INC || token.id == T_DEC) {
+            // Postfix increment/decrement: identifier++ or identifier--
+            TokenIdx_t token_idx = tstore_getidx();
+            next_token(); // consume '++' or '--'
+            
+            ASTNodeIdx_t postfix_node = create_ast_node(AST_EXPR_UNARY_OP, token_idx);
+            if (postfix_node) {
+                HBNode *node = HBGet(postfix_node, HBMODE_AST);
+                node->ast.unary.operand = left;
+                node->ast.unary.operator = token.id; // Store T_INC or T_DEC
+            }
+            left = postfix_node;
+        } else if (token.id == T_LBRACKET) {
+            // Array subscript: array[index]
+            TokenIdx_t token_idx = tstore_getidx();
+            next_token(); // consume '['
+            
+            ASTNodeIdx_t index = parse_expression();
+            if (!index) {
+                Token_t current = peek_token();
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "Expected array index expression, found '%s' at line %u", 
+                         get_token_name(current.id), current.line);
+                
+                SourceLocation_t location = error_create_location(token_idx);
+                error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                                 error_msg, "Check array subscript syntax", "parser", NULL);
+                return left;
+            }
+            
+            expect_token(T_RBRACKET);
+            
+            // Create array subscript node (using binary op structure)
+            ASTNodeIdx_t subscript_node = create_ast_node(AST_EXPR_BINARY_OP, token_idx);
+            if (subscript_node) {
+                HBNode *node = HBGet(subscript_node, HBMODE_AST);
+                node->ast.binary.left = left;     // array
+                node->ast.binary.right = index;   // index
+                // The token_idx already contains the '[' position for context
+            }
+            left = subscript_node;
         } else {
             // No more postfix operators
             break;
@@ -505,7 +890,7 @@ ASTNodeIdx_t parse_multiplicative_expression(void) {
 
     while (1) {
         Token_t token = peek_token();
-        if (token.id != T_MUL && token.id != T_DIV) {
+        if (token.id != T_MUL && token.id != T_DIV && token.id != T_MOD) {
             break;
         }
 
@@ -514,9 +899,14 @@ ASTNodeIdx_t parse_multiplicative_expression(void) {
         
         ASTNodeIdx_t right = parse_unary_expression();
         if (!right) {
+            Token_t current = peek_token();
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Expected right operand, found '%s' at line %u", 
+                     get_token_name(current.id), current.line);
+            
             SourceLocation_t location = error_create_location(token_idx);
             error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
-                             "Expected right operand", "Check expression syntax", "parser", NULL);
+                             error_msg, "Check expression syntax", "parser", NULL);
             return left;
         }
 
@@ -545,14 +935,24 @@ ASTNodeIdx_t parse_unary_expression(void) {
     switch (token.id) {
         case T_PLUS:
         case T_MINUS:
-        case T_NOT: {
+        case T_NOT:
+        case T_INC:
+        case T_DEC:
+        case T_MUL: // Pointer dereference: *ptr
+        case T_AMPERSAND: // Address-of: &var
+        case T_TILDE: { // Bitwise NOT: ~value
             next_token(); // consume unary operator
             
             ASTNodeIdx_t operand = parse_unary_expression(); // Right-associative
             if (!operand) {
+                Token_t current = peek_token();
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "Expected operand after unary operator, found '%s' at line %u", 
+                         get_token_name(current.id), current.line);
+                
                 SourceLocation_t location = error_create_location(token_idx);
                 error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
-                                 "Expected operand after unary operator", "Check unary expression syntax", "parser", NULL);
+                                 error_msg, "Check unary expression syntax", "parser", NULL);
                 return 0;
             }
 
@@ -636,6 +1036,51 @@ ASTNodeIdx_t parse_statement(void) {
             return node_idx;
         }
 
+        case T_FOR: {
+            next_token(); // consume 'for'
+            expect_token(T_LPAREN);
+            
+            // Parse for loop components: for(init; condition; update)
+            ASTNodeIdx_t init = 0;
+            if (peek_token().id != T_SEMICOLON) {
+                // Parse init (could be declaration or expression)
+                if (is_type_specifier_start(peek_token().id)) {
+                    init = parse_declaration();
+                } else {
+                    init = parse_expression();
+                    expect_token(T_SEMICOLON);
+                }
+            } else {
+                next_token(); // consume empty init semicolon
+            }
+            
+            ASTNodeIdx_t condition = 0;
+            if (peek_token().id != T_SEMICOLON) {
+                condition = parse_expression();
+            }
+            expect_token(T_SEMICOLON);
+            
+            ASTNodeIdx_t update = 0;
+            if (peek_token().id != T_RPAREN) {
+                update = parse_expression();
+            }
+            expect_token(T_RPAREN);
+            
+            ASTNodeIdx_t body = parse_statement();
+            
+            ASTNodeIdx_t node_idx = create_ast_node(AST_STMT_FOR, token_idx);
+            if (node_idx) {
+                HBNode *node = HBGet(node_idx, HBMODE_AST);
+                // Use children structure for for loop parts
+                node->ast.children.child1 = init;     // initialization  
+                node->ast.children.child2 = condition; // condition
+                node->ast.children.child3 = update;   // update
+                // Use conditional structure for body
+                node->ast.conditional.then_stmt = body;
+            }
+            return node_idx;
+        }
+
         case T_LBRACE: {
             // Compound statement - creates a new scope (C99 compliant)
             next_token(); // consume '{'
@@ -663,18 +1108,17 @@ ASTNodeIdx_t parse_statement(void) {
                 
                 if (!stmt) break;
                 
-                // Chain all statements/declarations sequentially
+                // Chain all statements properly - manifest compliant (no circular references)
                 if (!first_stmt) {
                     first_stmt = stmt;
                     last_stmt = stmt;
-                } else {
-                    // Link statements using child2 as next pointer for all node types
-                    if (last_stmt) {
-                        HBNode *last_node = HBGet(last_stmt, HBMODE_AST);
-                        if (last_node) {
-                            // Use generic children structure for consistent chaining
-                            last_node->ast.children.child2 = stmt;
-                        }
+                } else if (last_stmt && stmt != last_stmt) {  // Prevent self-references
+                    // Chain statements using a clean approach that respects AST node structure
+                    HBNode *last_node = HBGet(last_stmt, HBMODE_AST);
+                    if (last_node) {
+                        // Use child2 for statement chaining in compound statements
+                        // This is safe because most statements don't use child2 for their own structure
+                        last_node->ast.children.child2 = stmt;
                     }
                     last_stmt = stmt;
                 }
@@ -688,7 +1132,7 @@ ASTNodeIdx_t parse_statement(void) {
                 if (comp_node) {
                     // In C99, all declarations and statements are mixed in one list
                     comp_node->ast.compound.declarations = 0;      // Not used in C99 mixed mode
-                    comp_node->ast.compound.statements = first_stmt; // All items in sequence
+                    comp_node->ast.compound.statements = first_stmt; // Only first statement to avoid cycles
                     comp_node->ast.compound.scope_idx = parser_state.scope_depth; // Current scope
                 }
             }
@@ -729,23 +1173,20 @@ ASTNodeIdx_t parse_declaration(void) {
         return 0;
     }
     
-     // Now expect an identifier (unless this is a struct/union/enum declaration)
-    Token_t id_token = peek_token();
-    if (id_token.id != T_ID) {
-        // Handle cases like "struct { ... }" or bare type declarations
-        if (peek_token().id == T_SEMICOLON) {
-            next_token();  // consume semicolon
-            return create_ast_node(AST_VAR_DECL, token_idx);
-        }
-
+    // Check for bare type declarations (like "struct Point { ... };")
+    if (peek_token().id == T_SEMICOLON) {
+        next_token();  // consume semicolon
+        return create_ast_node(AST_VAR_DECL, token_idx);
+    }
+    
+    // Parse declarator (handles pointers, identifier, and arrays)
+    sstore_pos_t identifier_pos = parse_declarator();
+    if (identifier_pos == 0) {
         SourceLocation_t location = error_create_location(tstore_getidx());
         error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
                          "Missing identifier", "Expected identifier after type", "parser", NULL);
         return 0;
     }
-
-    next_token();  // consume identifier
-    // const char* name = sstore_get(id_token.pos);  // Unused for now
 
     // Check if this is a function definition
     if (peek_token().id == T_LPAREN) {
@@ -760,7 +1201,7 @@ ASTNodeIdx_t parse_declaration(void) {
         }
         
         parser_state.in_function = 1;
-        add_symbol(id_token.pos, SYM_FUNCTION, tstore_getidx());
+        // Function symbol will be created when we create the AST node
 
         next_token();  // consume '('
         
@@ -773,11 +1214,13 @@ ASTNodeIdx_t parse_declaration(void) {
             // Parse parameter type
             if (is_type_specifier_start(peek_token().id)) {
                 TypeSpecifier_t param_type = parse_type_specifiers();
-                if (param_type.is_valid && peek_token().id == T_ID) {
-                    Token_t param_token = peek_token();
-                    next_token();  // consume parameter name
-                    // Parameters have function scope (depth 1) in C99
-                    add_symbol(param_token.pos, SYM_VARIABLE, tstore_getidx());
+                if (param_type.is_valid) {
+                    // Parse declarator (handles pointers and qualifiers)
+                    sstore_pos_t param_name_pos = parse_declarator();
+                    if (param_name_pos != 0) {
+                        // Parameters have function scope (depth 1) in C99
+                        add_symbol_with_c99_flags(param_name_pos, SYM_VARIABLE, tstore_getidx(), &param_type);
+                    }
                 }
                 // Handle comma between parameters
                 if (peek_token().id == T_COMMA) {
@@ -788,9 +1231,14 @@ ASTNodeIdx_t parse_declaration(void) {
                 }
             } else {
                 // Skip unknown tokens to avoid infinite loop, but report error
+                Token_t current = peek_token();
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "Unexpected token '%s' in parameter list at line %u", 
+                         get_token_name(current.id), current.line);
+                
                 SourceLocation_t location = error_create_location(tstore_getidx());
                 error_core_report(ERROR_WARNING, ERROR_SYNTAX, &location, 2002,
-                                 "Unexpected token in parameter list", 
+                                 error_msg, 
                                  "Check parameter syntax", "parser", NULL);
                 next_token();
             }
@@ -805,9 +1253,12 @@ ASTNodeIdx_t parse_declaration(void) {
             if (func_node) {
                 HBNode *node = HBGet(func_node, HBMODE_AST);
                 if (node) {
-                    // Store function name in proper field
-                    node->ast.binary.value.string_pos = id_token.pos;  // Function name
-                    node->ast.children.child1 = body;  // Function body
+                    // Use declaration structure as specified in AST Node Reference
+                    SymIdx_t sym_idx = add_symbol_with_c99_flags(identifier_pos, SYM_FUNCTION, token_idx, &type_spec);
+                    node->ast.declaration.symbol_idx = sym_idx;     // Function symbol
+                    node->ast.declaration.type_idx = 0;             // Function type (to be added)
+                    node->ast.declaration.initializer = body;       // Function body
+                    node->ast.declaration.storage_class = 0;        // Default storage
                 }
             }
             // Exit function scope back to file scope (depth 0)
@@ -822,36 +1273,66 @@ ASTNodeIdx_t parse_declaration(void) {
             return create_ast_node(AST_FUNCTION_DECL, token_idx);
         }
     } else {
-        // Variable declaration
-        SymIdx_t sym_idx = add_symbol(id_token.pos, SYM_VARIABLE, tstore_getidx());
+        // Variable declaration - handle multiple declarators separated by commas
+        ASTNodeIdx_t first_decl = 0;
+        ASTNodeIdx_t last_decl = 0;
+        
+        do {
+            // Create symbol for this declarator
+            SymIdx_t sym_idx = add_symbol_with_c99_flags(identifier_pos, SYM_VARIABLE, tstore_getidx(), &type_spec);
 
-        // Handle optional initializer
-        if (peek_token().id == T_ASSIGN) {
-            next_token();  // consume '='
-            ASTNodeIdx_t init_expr = parse_expression();
+            // Handle optional initializer
             ASTNodeIdx_t decl_node = create_ast_node(AST_VAR_DECL, token_idx);
             if (decl_node) {
                 HBNode *node = HBGet(decl_node, HBMODE_AST);
                 if (node) {
-                    node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
-                    node->ast.declaration.initializer = init_expr; // Store initializer expression
+                    node->ast.declaration.symbol_idx = sym_idx;
+                    node->ast.declaration.type_idx = 0;
+                    
+                    if (peek_token().id == T_ASSIGN) {
+                        next_token();  // consume '='
+                        ASTNodeIdx_t init_expr = parse_expression();
+                        node->ast.declaration.initializer = init_expr;
+                    } else {
+                        node->ast.declaration.initializer = 0;
+                    }
                 }
             }
-            expect_token(T_SEMICOLON);
-            return decl_node;
-        } else {
-            // Variable declaration without initializer
-            ASTNodeIdx_t decl_node = create_ast_node(AST_VAR_DECL, token_idx);
-            if (decl_node) {
-                HBNode *node = HBGet(decl_node, HBMODE_AST);
-                if (node) {
-                    node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
-                    node->ast.declaration.initializer = 0;      // No initializer
+            
+            // Chain multiple declarations
+            if (!first_decl) {
+                first_decl = decl_node;
+                last_decl = decl_node;
+            } else {
+                // Chain using child2 (similar to statement chaining)
+                if (last_decl) {
+                    HBNode *last_node = HBGet(last_decl, HBMODE_AST);
+                    if (last_node) {
+                        last_node->ast.children.child2 = decl_node;
+                    }
                 }
+                last_decl = decl_node;
             }
-            expect_token(T_SEMICOLON);
-            return decl_node;
-        }
+            
+            // Check for comma (more declarators)
+            if (peek_token().id == T_COMMA) {
+                next_token(); // consume comma
+                
+                // Parse next declarator
+                identifier_pos = parse_declarator();
+                if (identifier_pos == 0) {
+                    SourceLocation_t location = error_create_location(tstore_getidx());
+                    error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                                     "Expected identifier after comma", "Check declaration syntax", "parser", NULL);
+                    break;
+                }
+            } else {
+                break; // No more declarators
+            }
+        } while (1);
+        
+        expect_token(T_SEMICOLON);
+        return first_decl; // Return the first declaration in the chain
     }
 }
 
@@ -961,7 +1442,7 @@ static void parser_cleanup(void) {
  * @return Type information encoded as a composite value, or 0 on error
  */
 static TypeSpecifier_t parse_type_specifiers(void) {
-    TypeSpecifier_t type = {0, 0, 0, 0, 1};  // Initialize as valid
+    TypeSpecifier_t type = {0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // Initialize all fields
     Token_t token;
     int tokens_consumed = 0;
 
@@ -1036,6 +1517,147 @@ static TypeSpecifier_t parse_type_specifiers(void) {
                 advance = 1;
                 break;
 
+            // C99 storage class specifiers
+            case T_INLINE:
+                if (type.has_inline) {
+                    type.is_valid = 0; // Cannot have multiple inline
+                    return type;
+                }
+                type.has_inline = 1;
+                advance = 1;
+                break;
+
+            case T_STATIC:
+                if (type.has_static || type.has_extern || type.has_auto || type.has_register) {
+                    type.is_valid = 0; // Cannot mix storage classes
+                    return type;
+                }
+                type.has_static = 1;
+                advance = 1;
+                break;
+
+            case T_EXTERN:
+                if (type.has_static || type.has_extern || type.has_auto || type.has_register) {
+                    type.is_valid = 0; // Cannot mix storage classes
+                    return type;
+                }
+                type.has_extern = 1;
+                advance = 1;
+                break;
+
+            case T_AUTO:
+                if (type.has_static || type.has_extern || type.has_auto || type.has_register) {
+                    type.is_valid = 0; // Cannot mix storage classes
+                    return type;
+                }
+                type.has_auto = 1;
+                advance = 1;
+                break;
+
+            case T_REGISTER:
+                if (type.has_static || type.has_extern || type.has_auto || type.has_register) {
+                    type.is_valid = 0; // Cannot mix storage classes
+                    return type;
+                }
+                type.has_register = 1;
+                advance = 1;
+                break;
+
+            case T_TYPEDEF:
+                if (type.has_typedef) {
+                    type.is_valid = 0; // Cannot have multiple typedef
+                    return type;
+                }
+                type.has_typedef = 1;
+                advance = 1;
+                break;
+
+            // Type qualifiers
+            case T_CONST:
+                if (type.has_const) {
+                    type.is_valid = 0; // Cannot have multiple const
+                    return type;
+                }
+                type.has_const = 1;
+                advance = 1;
+                break;
+
+            case T_VOLATILE:
+                if (type.has_volatile) {
+                    type.is_valid = 0; // Cannot have multiple volatile
+                    return type;
+                }
+                type.has_volatile = 1;
+                advance = 1;
+                break;
+
+            case T_RESTRICT:
+                if (type.has_restrict) {
+                    type.is_valid = 0; // Cannot have multiple restrict
+                    return type;
+                }
+                type.has_restrict = 1;
+                advance = 1;
+                break;
+
+            // C99 complex/imaginary types
+            case T_COMPLEX:
+                if (type.has_complex || type.has_imaginary) {
+                    type.is_valid = 0; // Cannot mix complex/imaginary
+                    return type;
+                }
+                type.has_complex = 1;
+                advance = 1;
+                break;
+
+            case T_IMAGINARY:
+                if (type.has_complex || type.has_imaginary) {
+                    type.is_valid = 0; // Cannot mix complex/imaginary
+                    return type;
+                }
+                type.has_imaginary = 1;
+                advance = 1;
+                break;
+
+            case T_BOOL:
+                if (type.base_type != 0 || type.has_signed != 0 || type.has_long || type.has_short) {
+                    type.is_valid = 0; // _Bool cannot be combined with modifiers
+                    return type;
+                }
+                type.base_type = T_BOOL;
+                advance = 1;
+                break;
+                
+            case T_STRUCT:
+            case T_UNION:
+            case T_ENUM:
+                // For now, treat these as base types (proper struct parsing would be more complex)
+                if (type.base_type != 0) {
+                    type.is_valid = 0; // Cannot have multiple base types
+                    return type;
+                }
+                type.base_type = token.id;
+                next_token(); // consume struct/union/enum keyword
+                
+                // Skip the tag name if present
+                if (peek_token().id == T_ID) {
+                    next_token(); // consume tag name
+                }
+                
+                // Skip struct body if present
+                if (peek_token().id == T_LBRACE) {
+                    next_token(); // consume '{'
+                    int brace_count = 1;
+                    while (brace_count > 0 && peek_token().id != T_EOF) {
+                        Token_t t = next_token();
+                        if (t.id == T_LBRACE) brace_count++;
+                        else if (t.id == T_RBRACE) brace_count--;
+                    }
+                }
+                tokens_consumed++; // We consumed tokens manually
+                advance = 0; // Don't advance again - we already did it manually
+                break;
+
             default:
                 // Not a type specifier, stop parsing
                 if (tokens_consumed == 0) {
@@ -1070,6 +1692,69 @@ static TypeSpecifier_t parse_type_specifiers(void) {
 }
 
 /**
+ * @brief Parse a simple declarator (handles pointer syntax, identifier, and arrays)
+ * Simplified C99 declarator parsing for parameters and declarations  
+ * @return Position of the identifier, or 0 on error
+ */
+static sstore_pos_t parse_declarator(void) {
+    // Handle pointer prefixes (* and * restrict, * const, etc.)
+    while (peek_token().id == T_MUL) {
+        next_token(); // consume '*'
+        
+        // Skip type qualifiers after '*' 
+        while (peek_token().id == T_CONST || peek_token().id == T_VOLATILE || peek_token().id == T_RESTRICT) {
+            next_token(); // consume qualifier
+        }
+    }
+    
+    // Expect identifier after all pointers and qualifiers
+    if (peek_token().id != T_ID) {
+        return 0; // No valid identifier found
+    }
+    
+    Token_t id_token = peek_token();
+    next_token(); // consume identifier
+    
+    // Handle array dimensions - C99 supports variable length arrays
+    while (peek_token().id == T_LBRACKET) {
+        next_token(); // consume '['
+        
+        // Parse array size expression (could be constant or variable for VLA)
+        if (peek_token().id != T_RBRACKET) {
+            // Parse the array size expression
+            ASTNodeIdx_t size_expr = parse_assignment_expression();
+            if (!size_expr) {
+                Token_t current = peek_token();
+                char error_msg[256];
+                snprintf(error_msg, sizeof(error_msg), "Expected array size expression, found '%s' at line %u", 
+                         get_token_name(current.id), current.line);
+                
+                SourceLocation_t location = error_create_location(tstore_getidx());
+                error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                                 error_msg, "Check array declaration syntax", "parser", NULL);
+                return 0;
+            }
+        }
+        
+        // Expect closing bracket
+        if (peek_token().id != T_RBRACKET) {
+            Token_t current = peek_token();
+            char error_msg[256];
+            snprintf(error_msg, sizeof(error_msg), "Expected ']' in array declaration, found '%s' at line %u", 
+                     get_token_name(current.id), current.line);
+            
+            SourceLocation_t location = error_create_location(tstore_getidx());
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2003,
+                             error_msg, "Check array declaration syntax", "parser", NULL);
+            return 0;
+        }
+        next_token(); // consume ']'
+    }
+    
+    return id_token.pos;
+}
+
+/**
  * @brief Check if the current token starts a type specifier
  */
 static int is_type_specifier_start(TokenID_t token_id) {
@@ -1079,7 +1764,8 @@ static int is_type_specifier_start(TokenID_t token_id) {
             token_id == T_STRUCT || token_id == T_UNION || token_id == T_ENUM ||
             token_id == T_TYPEDEF || token_id == T_EXTERN || token_id == T_STATIC ||
             token_id == T_AUTO || token_id == T_REGISTER || token_id == T_CONST ||
-            token_id == T_VOLATILE);
+            token_id == T_VOLATILE || token_id == T_INLINE || token_id == T_RESTRICT ||
+            token_id == T_COMPLEX || token_id == T_IMAGINARY || token_id == T_BOOL);
 }
 
 /**
