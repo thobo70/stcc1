@@ -29,9 +29,9 @@ void run_tac_builder_c99_tests(void);
 
 static void setUp_tac_builder_c99(void) {
     // Initialize required components
-    sstore_init("test_strings.sst");
-    astore_init("test_ast.ast");
-    symtab_init("test_symbols.sym");
+    sstore_init("tests/temp/test_strings.sst");
+    astore_init("tests/temp/test_ast.ast");
+    symtab_init("tests/temp/test_symbols.sym");
 }
 
 static void tearDown_tac_builder_c99(void) {
@@ -68,7 +68,7 @@ void test_tac_builder_c99_scoping_basic(void) {
     
     // Initialize TAC builder
     TACBuilder builder;
-    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "test_c99_basic.tac"));
+    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "tests/temp/test_c99_basic.tac"));
     
     // Verify no errors occurred during initialization
     TEST_ASSERT_EQUAL(0, builder.error_count);
@@ -119,7 +119,7 @@ void test_tac_builder_symbol_table_integration(void) {
     
     // Initialize TAC builder
     TACBuilder builder;
-    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "test_symbol_integration.tac"));
+    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "tests/temp/test_symbol_integration.tac"));
     
     // Translate identifiers
     TACOperand a_operand = tac_build_from_ast(&builder, a_ident_ast);
@@ -178,7 +178,7 @@ void test_tac_builder_no_hardcoded_mappings(void) {
     
     // Initialize TAC builder
     TACBuilder builder;
-    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "test_no_hardcoding.tac"));
+    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "tests/temp/test_no_hardcoding.tac"));
     
     // Translate identifiers
     TACOperand z_operand = tac_build_from_ast(&builder, z_ast);

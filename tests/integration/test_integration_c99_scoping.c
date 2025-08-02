@@ -28,8 +28,8 @@ void test_integration_c99_basic_functionality(void) {
     // Test basic C99 functionality: proper symbol table integration
     
     // Initialize all components
-    sstore_init("test_integration_strings.sst");
-    symtab_init("test_integration_symbols.sym");
+    sstore_init("tests/temp/test_integration_strings.sst");
+    symtab_init("tests/temp/test_integration_symbols.sym");
     
     // Create basic symbol table entries
     SymTabEntry main_func = {0};
@@ -48,7 +48,7 @@ void test_integration_c99_basic_functionality(void) {
     
     // Initialize TAC builder
     TACBuilder builder;
-    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "test_integration_basic.tac"));
+    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "tests/temp/test_integration_basic.tac"));
     
     // Verify no errors during initialization
     TEST_ASSERT_EQUAL(0, builder.error_count);
@@ -69,8 +69,8 @@ void test_integration_c99_function_name_resolution(void) {
     // Test function name resolution system works end-to-end
     
     // Initialize components
-    sstore_init("test_integration_func_strings.sst");
-    symtab_init("test_integration_func_symbols.sym");
+    sstore_init("tests/temp/test_integration_func_strings.sst");
+    symtab_init("tests/temp/test_integration_func_symbols.sym");
     
     // Create multiple function symbols
     SymTabEntry add_func = {0};
@@ -87,7 +87,7 @@ void test_integration_c99_function_name_resolution(void) {
     
     // Initialize TAC builder
     TACBuilder builder;
-    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "test_integration_func.tac"));
+    TEST_ASSERT_EQUAL(1, tac_builder_init(&builder, "tests/temp/test_integration_func.tac"));
     
     // Verify function table contains both functions
     TEST_ASSERT_EQUAL(2, builder.function_table.count);

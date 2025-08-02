@@ -27,7 +27,7 @@ void run_stas_tac_generator_tests(void);
 
 void test_stas_tac_basic_instruction_generation(void) {
     // Test basic TAC instruction creation and storage
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_basic.tac"));  // Returns 1 on success
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_basic.tac"));  // Returns 1 on success
     
     // Create a simple assignment instruction: t1 = 42
     TACInstruction instr;
@@ -59,7 +59,7 @@ void test_stas_tac_basic_instruction_generation(void) {
 
 void test_stas_tac_store_functionality(void) {
     // Test TAC store basic operations
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_store.tac"));  // Returns 1 on success
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_store.tac"));  // Returns 1 on success
     
     // Create arithmetic instructions
     TACInstruction add_instr;
@@ -104,7 +104,7 @@ void test_stas_tac_store_functionality(void) {
 
 void test_stas_tac_generator_with_engine_validation(void) {
     // Test STAS TAC generation AND validate with TAC engine
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_validation.tac"));
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_validation.tac"));
     
     // Generate STAS TAC instruction: t1 = 42
     TACInstruction instr1;
@@ -151,7 +151,7 @@ void test_stas_tac_generator_with_engine_validation(void) {
 
 void test_stas_arithmetic_expression_validation(void) {
     // Test STAS TAC generation for complex arithmetic WITH TAC engine validation
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_arithmetic.tac"));
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_arithmetic.tac"));
     
     // Generate STAS TAC for: result = a + b (simple arithmetic to ensure engine works)
     TACInstruction instructions[3];
@@ -222,7 +222,7 @@ void test_stas_arithmetic_expression_validation(void) {
 
 void test_stas_control_flow_validation(void) {
     // Test STAS TAC generation for control flow AND validate with TAC engine
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_control_flow.tac"));
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_control_flow.tac"));
     
     // Generate STAS TAC for comparison: t3 = (t1 > t2)
     TACInstruction instructions[3];

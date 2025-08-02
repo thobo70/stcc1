@@ -24,7 +24,7 @@ void run_tac_tests(void);
 
 void test_tac_init_close(void) {
     // Test TAC store initialization
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_init.tac"));  // Returns 1 on success
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_init.tac"));  // Returns 1 on success
     tacstore_close();
 }
 
@@ -33,7 +33,7 @@ void test_tac_init_close(void) {
 //============================================================================//
 
 void test_tac_instruction_storage(void) {
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_storage.tac"));  // Returns 1 on success
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_storage.tac"));  // Returns 1 on success
     
     // Create a test TAC instruction: t1 = 5 + 3
     TACInstruction instr;
@@ -65,7 +65,7 @@ void test_tac_instruction_storage(void) {
 //============================================================================//
 
 void test_tac_basic_operations(void) {
-    TEST_ASSERT_EQUAL(1, tacstore_init("test_basic_ops.tac"));  // Returns 1 on success
+    TEST_ASSERT_EQUAL(1, tacstore_init("tests/temp/test_basic_ops.tac"));  // Returns 1 on success
     
     // Test assignment: t1 = 42
     TACInstruction assign_instr;
