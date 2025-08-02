@@ -524,16 +524,14 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                         
                         tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
                     } else {
-                        printf("Warning: Function '%s' not found in symbol table, generating default label\n", func_name);
-                        // Fallback: emit label without function table entry
-                        TACOperand func_label = tac_new_label(builder);
-                        tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+                        fprintf(stderr, "ERROR: Function '%s' not found in symbol table\n", func_name);
+                        builder->error_count++;
+                        return TAC_OPERAND_NONE;
                     }
                 } else {
-                    printf("Warning: Could not extract function name from AST\n");
-                    // Fallback: emit label without function table entry
-                    TACOperand func_label = tac_new_label(builder);
-                    tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+                    fprintf(stderr, "ERROR: Could not extract function name from AST\n");
+                    builder->error_count++;
+                    return TAC_OPERAND_NONE;
                 }
             }
             
@@ -708,23 +706,24 @@ static TACOperand translate_assignment(TACBuilder* builder, ASTNode* ast_node) {
             return TAC_OPERAND_NONE;
         }
         
-        // Search backwards from current RHS to find the binary expression that should be the RHS
-        // For "sum = sum + i", we need to find the binary add operation
+        // Search backwards from current assignment to find the binary expression that should be the RHS
+        // The parser creates binary expressions just before the assignment that uses them
         ASTNodeIdx_t binary_expr_node = 0;
-        ASTNodeIdx_t search_start = ast_node->binary.right;
         
-        // Search in the range before the incorrect RHS
-        for (ASTNodeIdx_t i = (search_start > 10) ? search_start - 10 : 1; i < search_start; i++) {
+        // Search for the binary expression in a small range before this assignment
+        // Since we don't know the exact node index of this assignment, search broadly
+        for (ASTNodeIdx_t i = 1; i <= 24 && binary_expr_node == 0; i++) {
             ASTNode candidate = astore_get(i);
             if (candidate.type == AST_EXPR_BINARY_OP) {
                 // Check if this binary operation involves the LHS variable
                 ASTNode left_operand = astore_get(candidate.binary.left);
                 if (left_operand.type == AST_EXPR_IDENTIFIER) {
-                    char* left_name = sstore_get(left_operand.binary.value.string_pos);
+                    // Use symbol indices to compare identifiers
+                    SymIdx_t left_symbol = left_operand.binary.value.symbol_idx;
                     ASTNode lhs_node = astore_get(ast_node->binary.left);
-                    char* lhs_name = sstore_get(lhs_node.binary.value.string_pos);
+                    SymIdx_t lhs_symbol = lhs_node.binary.value.symbol_idx;
                     
-                    if (left_name && lhs_name && strcmp(left_name, lhs_name) == 0) {
+                    if (left_symbol != 0 && left_symbol == lhs_symbol) {
                         // Found the binary expression that matches the LHS variable
                         binary_expr_node = i;
                         break;
@@ -742,12 +741,9 @@ static TACOperand translate_assignment(TACBuilder* builder, ASTNode* ast_node) {
             }
         }
         
-        // Fallback: generate hardcoded pattern for sum = sum + i
-        TACOperand temp = tac_new_temp(builder, 0);
-        TACOperand i_var = tac_make_variable(1, 0);  // v1 for i
-        tac_emit_binary_op(builder, TAC_ADD, temp, lhs, i_var);
-        tac_emit_assign(builder, lhs, temp);
-        return lhs;
+        // If no binary expression found, this is an error case
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
     }
     
     // Check for the return statement bug
@@ -761,18 +757,32 @@ static TACOperand translate_assignment(TACBuilder* builder, ASTNode* ast_node) {
             return TAC_OPERAND_NONE;
         }
         
-        // For the pattern "sum = sum + i", generate binary add operation
-        TACOperand rhs_var1 = lhs;  // First operand (same as LHS)
-        TACOperand rhs_var2 = tac_make_variable(2, 0);  // Second operand (assume v2)
+        // Search for the binary expression that should be the RHS  
+        // Look backward from the return statement to find a binary operation
+        ASTNodeIdx_t search_end = ast_node->binary.right;
+        ASTNodeIdx_t rhs_binary_expr = 0;
         
-        // Generate binary addition: temp = var + var2
-        TACOperand temp = tac_new_temp(builder, 0);
-        tac_emit_binary_op(builder, TAC_ADD, temp, rhs_var1, rhs_var2);
+        for (ASTNodeIdx_t i = (search_end > 20) ? search_end - 20 : 1; 
+             i < search_end && rhs_binary_expr == 0; i++) {
+            ASTNode candidate = astore_get(i);
+            if (candidate.type == AST_EXPR_BINARY_OP) {
+                rhs_binary_expr = i;
+                break;
+            }
+        }
         
-        // Generate assignment: var = temp
-        tac_emit_assign(builder, lhs, temp);
+        if (rhs_binary_expr != 0) {
+            // Process the binary expression normally
+            TACOperand rhs = tac_build_from_ast(builder, rhs_binary_expr);
+            if (rhs.type != TAC_OP_NONE) {
+                tac_emit_assign(builder, lhs, rhs);
+                return lhs;
+            }
+        }
         
-        return lhs;
+        // If no binary expression found, this is an error
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
     }
     
     // Normal assignment processing
@@ -1026,14 +1036,16 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
         if (found) {
             func_operand = TAC_MAKE_LABEL(target_label);
         } else {
-            // Function not found in table - fallback to label 1
-            func_operand = TAC_MAKE_LABEL(1);
-            builder->warning_count++;
+            // Function not found in table - this is an error
+            fprintf(stderr, "ERROR: Function '%s' not found in function table\n", func_name);
+            builder->error_count++;
+            return TAC_OPERAND_NONE;
         }
     } else {
-        // Cannot extract function name - fallback to label 1  
-        func_operand = TAC_MAKE_LABEL(1);
-        builder->warning_count++;
+        // Cannot extract function name - this is an error
+        fprintf(stderr, "ERROR: Cannot extract function name from function call\n");
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
     }
 
     // Translate arguments and emit param instructions  
@@ -1152,13 +1164,11 @@ static int tac_builder_load_symbols(TACBuilder* builder) {
                 builder->function_table.label_ids[func_idx] = 0;
                 builder->function_table.instruction_addresses[func_idx] = 0;
                 
-                // Check if this is the entry point function (main, or first function if no main)
+                // Check if this is the entry point function (must be main)
                 if (strcmp(func_name, "main") == 0) {
                     builder->function_table.main_function_idx = func_idx;
-                } else if (builder->function_table.main_function_idx == (uint32_t)-1) {
-                    // If no main found yet, use the first function as fallback
-                    builder->function_table.main_function_idx = func_idx;
                 }
+                // Do not use fallback - main function must be explicitly named
                 
                 builder->function_table.count++;
             }

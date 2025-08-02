@@ -129,18 +129,9 @@ static int cc2_process_all_ast_nodes(void) {
         (void)result;
         node_count = 1;
     } else {
-        printf("DEBUG: No program root found, processing all valid nodes\n");
-        // Fallback: process all valid nodes
-        for (ASTNodeIdx_t idx = 1; idx <= 100; idx++) {
-            ASTNode node = astore_get(idx);
-
-            if (node.type != AST_FREE) {
-                printf("DEBUG: Processing valid node %u (type %d)\n", idx, node.type);
-                TACOperand result = tac_build_from_ast(&cc2_state.tac_builder, idx);
-                (void)result;
-                node_count++;
-            }
-        }
+        fprintf(stderr, "ERROR: No program root found in AST\n");
+        cc2_state.errors++;
+        return 1;
     }
 
     printf("DEBUG: Total nodes processed: %d\n", node_count);

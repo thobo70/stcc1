@@ -985,11 +985,9 @@ static TypeSpecifier_t parse_type_specifiers(void) {
                     // if the current token is actually a valid type specifier that
                     // we missed in our switch statement
                     if (is_type_specifier_start(token.id)) {
-                        // This is a bug - we should handle this token
-                        type.base_type = T_INT;  // Default fallback
-                        type.is_valid = 1;
-                        next_token();
-                        tokens_consumed++;
+                        // This is a bug - we should handle this token properly
+                        fprintf(stderr, "ERROR: Unhandled type specifier token %d\n", token.id);
+                        type.is_valid = 0;
                     } else {
                         type.is_valid = 0; // Truly not a type specifier
                     }

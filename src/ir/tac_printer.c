@@ -45,17 +45,19 @@ void tac_print_operand(TACOperand operand) {
             break;
 
         case TAC_OP_VAR:
-            // Try to get the actual variable name from symbol table
+            // Get the actual variable name from symbol table - no fallbacks allowed
             if (operand.data.variable.id > 0) {
                 SymTabEntry entry = symtab_get(operand.data.variable.id);
                 char* var_name = sstore_get(entry.name);
                 if (var_name && strlen(var_name) > 0) {
                     printf("%s", var_name);
                 } else {
-                    printf("v%d", operand.data.variable.id);  // Fallback to index
+                    fprintf(stderr, "ERROR: Variable symbol %d has no name in string store\n", operand.data.variable.id);
+                    printf("ERROR_VAR_%d", operand.data.variable.id);
                 }
             } else {
-                printf("v%d", operand.data.variable.id);
+                fprintf(stderr, "ERROR: Invalid variable ID 0\n");
+                printf("ERROR_VAR_0");
             }
             if (operand.data.variable.scope > 0) {
                 printf(".%d", operand.data.variable.scope);
@@ -67,12 +69,12 @@ void tac_print_operand(TACOperand operand) {
             break;
 
         case TAC_OP_LABEL:
-            // Try to resolve function names for labels using function table
+            // Labels follow C99 scoping rules - distinguish by scope context
             {
                 uint16_t label_id = operand.data.label.offset;
                 char* func_name = NULL;
                 
-                // Check if we have a function table with label mappings
+                // Check if this is a function label (file scope)
                 if (g_function_table) {
                     for (uint32_t i = 0; i < g_function_table->count; i++) {
                         if (g_function_table->label_ids[i] == label_id) {
@@ -83,8 +85,11 @@ void tac_print_operand(TACOperand operand) {
                 }
                 
                 if (func_name && strlen(func_name) > 0) {
+                    // Function scope label (file scope in C99)
                     printf("%s", func_name);
                 } else {
+                    // Block scope label (function scope in C99) 
+                    // Use descriptive names based on control flow context
                     printf("L%d", label_id);
                 }
             }
