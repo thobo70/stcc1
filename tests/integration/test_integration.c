@@ -58,7 +58,7 @@ void test_integration_simple_program(void) {
     TEST_ASSERT_FILE_EXISTS(sym_file);
     
     // Stage 3: TAC Generator
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_FILE_EXISTS(tac_file);
@@ -97,7 +97,7 @@ void test_integration_variables(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -148,7 +148,7 @@ void test_integration_expressions(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -191,7 +191,7 @@ void test_integration_control_flow(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -235,7 +235,7 @@ void test_integration_loops(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -277,7 +277,7 @@ void test_integration_functions(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -316,7 +316,7 @@ void test_integration_operator_precedence(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -354,7 +354,7 @@ void test_integration_error_handling(void) {
     
     // TAC generation depends on parser success
     if (result == 0) {
-        char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+        char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
         run_compiler_stage("cc2", NULL, tac_outputs);
     }
 }
@@ -394,7 +394,7 @@ void test_integration_recursive_functions(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -451,7 +451,7 @@ void test_integration_multiple_functions(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -503,7 +503,7 @@ void test_integration_typedefs_and_complex_types(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -554,7 +554,7 @@ void test_integration_nested_function_calls(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -607,7 +607,7 @@ void test_integration_iterative_algorithm(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
@@ -666,7 +666,7 @@ void test_integration_mixed_declarations_and_scoping(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     

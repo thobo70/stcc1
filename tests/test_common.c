@@ -481,7 +481,7 @@ uint16_t extract_main_label_from_tac_file(const char* tac_file) {
  */
 TACValidationResult validate_tac_execution_with_main(const char* tac_file, int expected_return_value) {
     // The tac_file is the binary TAC file, but we need to find the text file to extract metadata
-    // For now, assume it's "tac.out" as a common pattern
-    uint16_t main_label = extract_main_label_from_tac_file("tac.out");
+    // For now, assume it's "tests/temp/tac.out" as a common pattern
+    uint16_t main_label = extract_main_label_from_tac_file("tests/temp/tac.out");
     return validate_tac_execution_with_label(tac_file, main_label, expected_return_value);
 }
