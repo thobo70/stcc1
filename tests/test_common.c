@@ -447,3 +447,41 @@ TACValidationResult validate_tac_execution_with_label(const char* tac_file, uint
     
     return result;
 }
+
+
+/**
+ * @brief Extract main function label ID from TAC file metadata
+ */
+uint16_t extract_main_label_from_tac_file(const char* tac_file) {
+    FILE* fp = fopen(tac_file, "r");
+    if (!fp) {
+        return 1; // Default fallback
+    }
+    
+    char line[256];
+    uint16_t main_label = 1; // Default fallback
+    
+    // Read first few lines looking for MAIN_LABEL metadata
+    for (int i = 0; i < 10 && fgets(line, sizeof(line), fp); i++) {
+        if (strncmp(line, "; MAIN_LABEL: ", 14) == 0) {
+            int label;
+            if (sscanf(line + 14, "%d", &label) == 1) {
+                main_label = (uint16_t)label;
+                break;
+            }
+        }
+    }
+    
+    fclose(fp);
+    return main_label;
+}
+
+/**
+ * @brief Validate TAC execution using automatic main function detection
+ */
+TACValidationResult validate_tac_execution_with_main(const char* tac_file, int expected_return_value) {
+    // The tac_file is the binary TAC file, but we need to find the text file to extract metadata
+    // For now, assume it's "tac.out" as a common pattern
+    uint16_t main_label = extract_main_label_from_tac_file("tac.out");
+    return validate_tac_execution_with_label(tac_file, main_label, expected_return_value);
+}

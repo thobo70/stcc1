@@ -353,6 +353,14 @@ tac_engine_error_t tac_execute_binary_op(tac_engine_t* engine,
     // Get operand values
     tac_value_t val1, val2, result_val = {0};
     
+    // Debug: show which variables are being accessed
+    if (instruction->operand1.type == TAC_OP_VAR) {
+        printf("DEBUG BINARY OP: Reading operand1 from v%u\n", instruction->operand1.data.variable.id);
+    }
+    if (instruction->operand2.type == TAC_OP_VAR) {
+        printf("DEBUG BINARY OP: Reading operand2 from v%u\n", instruction->operand2.data.variable.id);
+    }
+    
     tac_engine_error_t err1 = tac_eval_operand(engine, &instruction->operand1, &val1);
     tac_engine_error_t err2 = tac_eval_operand(engine, &instruction->operand2, &val2);
     
@@ -627,55 +635,128 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
         // Resolve label to address
         uint16_t label_id = instruction->operand1.data.label.offset;
         
-        // Map parameters to the correct variable slots based on function label
-        if (engine->param_counter > 0) {
-            // Map parameters based on the function being called
-        // Map parameters to the correct variable slots based on function label
-        if (engine->param_counter > 0) {
-            // Map parameters based on the function being called
-            switch(label_id) {
-                case 1: // Function at L1 - examine TAC to determine parameter variables
-                    // For multiply function: expects parameters in v2, v3
-                    if (engine->param_counter >= 1) {
-                        engine->variables[2] = engine->param_stack[0]; // First param to v2
-                        printf("DEBUG CALL: L1 param 0 to v2 = %d\n", engine->param_stack[0].data.i32);
-                    }
-                    if (engine->param_counter >= 2) {
-                        engine->variables[3] = engine->param_stack[1]; // Second param to v3
-                        printf("DEBUG CALL: L1 param 1 to v3 = %d\n", engine->param_stack[1].data.i32);
-                    }
-                    break;
-                case 2: // Function at L2 - add_three function
-                    // For add_three function: expects parameters in v5, v6, v8
-                    if (engine->param_counter >= 1) {
-                        engine->variables[5] = engine->param_stack[0]; // First param to v5
-                        printf("DEBUG CALL: L2 param 0 to v5 = %d\n", engine->param_stack[0].data.i32);
-                    }
-                    if (engine->param_counter >= 2) {
-                        engine->variables[6] = engine->param_stack[1]; // Second param to v6
-                        printf("DEBUG CALL: L2 param 1 to v6 = %d\n", engine->param_stack[1].data.i32);
-                    }
-                    if (engine->param_counter >= 3) {
-                        engine->variables[8] = engine->param_stack[2]; // Third param to v8
-                        printf("DEBUG CALL: L2 param 2 to v8 = %d\n", engine->param_stack[2].data.i32);
-                    }
-                    break;
-                default:
-                    // For unknown functions, use sequential mapping starting from v1
-                    for (uint32_t i = 0; i < engine->param_counter && i < 10; i++) {
-                        engine->variables[i + 1] = engine->param_stack[i];
-                        printf("DEBUG CALL: Default mapping param %u to v%u = %d\n",
-                               i, i + 1, engine->param_stack[i].data.i32);
-                    }
-                    break;
-            }
-        }
-        
         tac_engine_error_t err = tac_resolve_label(&engine->label_table, label_id, &target);
         if (err != TAC_ENGINE_OK) {
             tac_set_error(engine, TAC_ENGINE_ERR_INVALID_OPERAND,
                          "Failed to resolve call target label %u", label_id);
             return TAC_ENGINE_ERR_INVALID_OPERAND;
+        }
+        
+        // Map parameters to the correct variable slots dynamically
+        if (engine->param_counter > 0) {
+            // Dynamic parameter mapping: Collect parameter variables, excluding assignment targets
+            uint32_t scan_start = target;
+            uint16_t param_vars[10]; // Store variable IDs for parameters
+            uint16_t assigned_vars[20]; // Store variable IDs that are assigned to
+            uint32_t unique_params = 0;
+            uint32_t assigned_count = 0;
+            
+            printf("DEBUG CALL: Scanning from instruction %u for parameter variables\n", scan_start);
+            
+            // First pass: collect all variables that are assigned to (not parameters)
+            for (uint32_t scan_offset = 1; scan_offset < 15 && 
+                 (scan_start + scan_offset) < engine->instruction_count; scan_offset++) {
+                
+                const TACInstruction* scan_instr = &engine->instructions[scan_start + scan_offset];
+                
+                // Stop if we hit another label (next function)
+                if (scan_instr->opcode == TAC_LABEL) {
+                    break;
+                }
+                
+                printf("DEBUG CALL: Scanning instruction %u, opcode 0x%x\n", scan_start + scan_offset, scan_instr->opcode);
+                
+                // Track variables that are assigned to (result operands)
+                if (scan_instr->result.type == TAC_OP_VAR && assigned_count < 20) {
+                    uint16_t var_id = scan_instr->result.data.variable.id;
+                    bool already_added = false;
+                    for (uint32_t i = 0; i < assigned_count; i++) {
+                        if (assigned_vars[i] == var_id) {
+                            already_added = true;
+                            break;
+                        }
+                    }
+                    if (!already_added) {
+                        assigned_vars[assigned_count++] = var_id;
+                        printf("DEBUG CALL: Found assigned variable v%u (not a parameter)\n", var_id);
+                    }
+                }
+            }
+            
+            // Second pass: collect parameter variables (used in operations but not assigned to)
+            for (uint32_t scan_offset = 1; scan_offset < 15 && 
+                 (scan_start + scan_offset) < engine->instruction_count; scan_offset++) {
+                
+                const TACInstruction* scan_instr = &engine->instructions[scan_start + scan_offset];
+                
+                // Stop if we hit another label (next function)
+                if (scan_instr->opcode == TAC_LABEL) {
+                    break;
+                }
+                
+                // Look for binary operations to find parameter variables
+                if (scan_instr->opcode >= TAC_ADD && scan_instr->opcode <= TAC_SHR) {
+                    // Check operand1
+                    if (scan_instr->operand1.type == TAC_OP_VAR) {
+                        uint16_t var_id = scan_instr->operand1.data.variable.id;
+                        // Skip if this variable is assigned to (it's not a parameter)
+                        bool is_assigned = false;
+                        for (uint32_t i = 0; i < assigned_count; i++) {
+                            if (assigned_vars[i] == var_id) {
+                                is_assigned = true;
+                                break;
+                            }
+                        }
+                        // Add to parameter list if not assigned and not already present
+                        if (!is_assigned) {
+                            bool already_added = false;
+                            for (uint32_t i = 0; i < unique_params; i++) {
+                                if (param_vars[i] == var_id) {
+                                    already_added = true;
+                                    break;
+                                }
+                            }
+                            if (!already_added && unique_params < 10) {
+                                param_vars[unique_params++] = var_id;
+                                printf("DEBUG CALL: Found parameter variable v%u\n", var_id);
+                            }
+                        }
+                    }
+                    // Check operand2
+                    if (scan_instr->operand2.type == TAC_OP_VAR) {
+                        uint16_t var_id = scan_instr->operand2.data.variable.id;
+                        // Skip if this variable is assigned to (it's not a parameter)
+                        bool is_assigned = false;
+                        for (uint32_t i = 0; i < assigned_count; i++) {
+                            if (assigned_vars[i] == var_id) {
+                                is_assigned = true;
+                                break;
+                            }
+                        }
+                        // Add to parameter list if not assigned and not already present
+                        if (!is_assigned) {
+                            bool already_added = false;
+                            for (uint32_t i = 0; i < unique_params; i++) {
+                                if (param_vars[i] == var_id) {
+                                    already_added = true;
+                                    break;
+                                }
+                            }
+                            if (!already_added && unique_params < 10) {
+                                param_vars[unique_params++] = var_id;
+                                printf("DEBUG CALL: Found parameter variable v%u\n", var_id);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Third pass: map parameters to the collected variables in order
+            for (uint32_t i = 0; i < unique_params && i < engine->param_counter; i++) {
+                engine->variables[param_vars[i]] = engine->param_stack[i];
+                printf("DEBUG CALL: Mapped param %u to v%u = %d\n",
+                       i, param_vars[i], engine->param_stack[i].data.i32);
+            }
         }
     } else if (instruction->operand1.type == TAC_OP_IMMEDIATE) {
         // Legacy immediate address handling

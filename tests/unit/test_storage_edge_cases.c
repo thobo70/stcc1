@@ -350,7 +350,7 @@ void test_symtab_invalid_operations(void) {
     char symtab_file[] = TEMP_PATH "test_symtab_invalid.out";
     
     // Test operations before initialization
-    SymTabEntry entry = {SYM_VARIABLE, 100, 0, 0, 0, 0, 0, 200, 1};
+    SymTabEntry entry = {SYM_VARIABLE, 100, 0, 0, 0, 0, 0, 200, 1, 0}; // Added scope_depth = 0
     SymIdx_t idx = symtab_add(&entry);
     TEST_ASSERT_EQUAL(0, idx);  // Should fail
     
@@ -366,7 +366,7 @@ void test_symtab_invalid_operations(void) {
     TEST_ASSERT_EQUAL(0, idx);  // Should fail
     
     // Test circular references (symbol pointing to itself)
-    SymTabEntry circular = {SYM_VARIABLE, 100, 1, 1, 1, 1, 1, 200, 1};
+    SymTabEntry circular = {SYM_VARIABLE, 100, 1, 1, 1, 1, 1, 200, 1, 0}; // Added scope_depth = 0
     idx = symtab_add(&circular);
     TEST_ASSERT_GREATER_THAN(0, idx);  // Should add but handle circularity
     
@@ -403,7 +403,7 @@ void test_symtab_boundary_conditions(void) {
     SymIdx_t indices[sizeof(types) / sizeof(SymType)];
     
     for (size_t i = 0; i < sizeof(types) / sizeof(SymType); i++) {
-        SymTabEntry entry = {types[i], i + 100, 0, 0, 0, 0, 0, i + 200, (int)i + 1};
+        SymTabEntry entry = {types[i], i + 100, 0, 0, 0, 0, 0, i + 200, (int)i + 1, 0}; // Added scope_depth = 0
         indices[i] = symtab_add(&entry);
         TEST_ASSERT_GREATER_THAN(0, indices[i]);
     }
@@ -419,7 +419,7 @@ void test_symtab_boundary_conditions(void) {
     
     // Test maximum depth symbol hierarchy
     SymIdx_t parent_idx = indices[0];
-    SymTabEntry child_entry = {SYM_VARIABLE, 999, parent_idx, 0, 0, 0, 0, 888, 10};
+    SymTabEntry child_entry = {SYM_VARIABLE, 999, parent_idx, 0, 0, 0, 0, 888, 10, 1}; // Added scope_depth = 1
     
     for (int depth = 0; depth < 10; depth++) {  // Test reasonable depth
         SymIdx_t child_idx = symtab_add(&child_entry);

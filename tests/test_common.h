@@ -81,6 +81,9 @@ TACValidationResult validate_tac_execution(const char* tac_file,
 TACValidationResult validate_tac_execution_with_label(const char* tac_file, 
                                                      uint16_t entry_label_id,
                                                      int expected_return_value);
+uint16_t extract_main_label_from_tac_file(const char* tac_file);
+TACValidationResult validate_tac_execution_with_main(const char* tac_file, 
+                                                    int expected_return_value);
 int load_tac_from_file(const char* filename, 
                       TACInstruction** instructions, 
                       uint32_t* count);

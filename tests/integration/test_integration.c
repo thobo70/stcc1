@@ -198,8 +198,8 @@ void test_integration_control_flow(void) {
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: x starts as 10, x > 5 is true, so x = x + 1 = 11
-    // This is a single-function program: main() at L1
-    TACValidationResult tac_result = validate_tac_execution_with_label(tac_file, 1, 11);
+    // Using automatic main function detection instead of hardcoded label
+    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 11);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(11, tac_result.final_return_value,
                              "Expected x = 10 + 1 = 11 (true branch)");
@@ -284,8 +284,8 @@ void test_integration_functions(void) {
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: add(5, 10) should return 15
-    // This is a multi-function program: add() at L1, main() at L2
-    TACValidationResult tac_result = validate_tac_execution_with_label(tac_file, 2, 15);
+    // Using automatic main function detection instead of hardcoded label
+    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 15);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(15, tac_result.final_return_value,
                              "Expected add(5, 10) = 15");
@@ -458,8 +458,8 @@ void test_integration_multiple_functions(void) {
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: multiply(3,4) = 12, add_three(12,5,2) = 19
-    // This is a 3-function program: multiply() at L1, add_three() at L2, main() at L3
-    TACValidationResult tac_result = validate_tac_execution_with_label(tac_file, 3, 19);
+    // Using automatic main function detection instead of hardcoded label
+    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 19);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(19, tac_result.final_return_value,
                              "Expected sum = multiply(3,4) + 5 + 2 = 12 + 7 = 19");
@@ -510,8 +510,8 @@ void test_integration_typedefs_and_complex_types(void) {
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: calculate(7,3) = 7*3 + 7 - 3 = 21 + 4 = 25
-    // This is a 2-function program: calculate() at L1, main() at L2
-    TACValidationResult tac_result = validate_tac_execution_with_label(tac_file, 2, 25);
+    // Using automatic main function detection instead of hardcoded label
+    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 25);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(25, tac_result.final_return_value,
                              "Expected calculate(7,3) = 7*3 + 7 - 3 = 25");
@@ -561,8 +561,8 @@ void test_integration_nested_function_calls(void) {
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: square(3) + double_value(4)*2 - square(2) = 9 + 16 - 4 = 21
-    // This is a 3-function program: square() at L1, double_value() at L2, main() at L3
-    TACValidationResult tac_result = validate_tac_execution_with_label(tac_file, 3, 21);
+    // Using automatic main function detection instead of hardcoded label
+    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 21);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(21, tac_result.final_return_value,
                              "Expected square(3) + double_value(4)*2 - square(2) = 9 + 16 - 4 = 21");
@@ -614,8 +614,8 @@ void test_integration_iterative_algorithm(void) {
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: factorial(5) = 5! = 120
-    // factorial() uses L1-L3 (L2,L3 for while loop), main() at L4
-    TACValidationResult tac_result = validate_tac_execution_with_label(tac_file, 4, 120);
+    // Using automatic main function detection instead of hardcoded label
+    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 120);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(120, tac_result.final_return_value,
                              "Expected factorial(5) = 120");
@@ -673,8 +673,8 @@ void test_integration_mixed_declarations_and_scoping(void) {
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: distance_squared(0,0,3,4) = 3*3 + 4*4 = 9 + 16 = 25
-    // This has main() first, then distance_squared(): main() at L1, distance_squared() at L2
-    TACValidationResult tac_result = validate_tac_execution_with_label(tac_file, 1, 25);
+    // Using automatic main function detection instead of hardcoded label
+    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 25);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(25, tac_result.final_return_value,
                              "Expected distance_squared(0,0,3,4) = 3² + 4² = 25");

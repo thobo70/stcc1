@@ -1001,7 +1001,13 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
     TACOperand func_operand;
     
     if (func_node.type == AST_EXPR_IDENTIFIER) {
-        func_name = sstore_get(func_node.binary.value.string_pos);
+        // Get the function name from symbol table using symbol index
+        SymTabIdx_t symbol_idx = func_node.binary.value.symbol_idx;
+        
+        if (symbol_idx != 0) {
+            SymTabEntry symbol = symtab_get(symbol_idx);
+            func_name = sstore_get(symbol.name);
+        }
     }
     
     // Look up function in function table
@@ -1010,7 +1016,7 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
         int found = 0;
         
         for (uint32_t i = 0; i < builder->function_table.count; i++) {
-            if (strcmp(builder->function_table.function_names[i], func_name) == 0) {
+            if (builder->function_table.function_names[i] && strcmp(builder->function_table.function_names[i], func_name) == 0) {
                 target_label = builder->function_table.label_ids[i];
                 found = 1;
                 break;
