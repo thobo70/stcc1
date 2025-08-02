@@ -58,7 +58,7 @@ void test_integration_simple_program(void) {
     TEST_ASSERT_FILE_EXISTS(sym_file);
     
     // Stage 3: TAC Generator
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH TEMP_PATH "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     TEST_ASSERT_FILE_EXISTS(tac_file);
