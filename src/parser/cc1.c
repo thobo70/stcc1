@@ -227,14 +227,16 @@ ASTNodeIdx_t parse_primary_expression(void) {
             ASTNodeIdx_t node_idx = create_ast_node(AST_EXPR_IDENTIFIER, token_idx);
             if (node_idx) {
                 HBNode *node = HBGet(node_idx, HBMODE_AST);
-                // Look up the symbol index for this identifier
-                SymIdx_t sym_idx = lookup_symbol(token.pos);
-                if (sym_idx == 0) {
-                    // Symbol not found - this could be an error or forward reference
-                    node->ast.binary.value.string_pos = token.pos;  // Store name for error reporting
-                } else {
-                    // Store the symbol index in the identifier node
-                    node->ast.binary.value.symbol_idx = sym_idx;
+                if (node) {
+                    // Look up the symbol index for this identifier
+                    SymIdx_t sym_idx = lookup_symbol(token.pos);
+                    if (sym_idx == 0) {
+                        // Symbol not found - store string position for name display
+                        node->ast.binary.value.string_pos = token.pos;  
+                    } else {
+                        // Store the symbol index in the identifier node  
+                        node->ast.binary.value.symbol_idx = sym_idx;
+                    }
                 }
             }
             return node_idx;
@@ -255,12 +257,31 @@ ASTNodeIdx_t parse_primary_expression(void) {
 
         case T_LITSTRING: {
             next_token();
-            return create_ast_node(AST_LIT_STRING, token_idx);
+            ASTNodeIdx_t node_idx = create_ast_node(AST_LIT_STRING, token_idx);
+            if (node_idx) {
+                HBNode *node = HBGet(node_idx, HBMODE_AST);
+                if (node) {
+                    // Store string position for string literals
+                    node->ast.binary.value.string_pos = token.pos;
+                }
+            }
+            return node_idx;
         }
 
         case T_LITCHAR: {
             next_token();
-            return create_ast_node(AST_LIT_CHAR, token_idx);
+            ASTNodeIdx_t node_idx = create_ast_node(AST_LIT_CHAR, token_idx);
+            if (node_idx) {
+                HBNode *node = HBGet(node_idx, HBMODE_AST);
+                if (node) {
+                    // Extract character value from string store
+                    char *str = sstore_get(token.pos);
+                    if (str && str[0] == '\'' && str[2] == '\'') {
+                        node->ast.binary.value.long_value = (long)str[1]; // Character value
+                    }
+                }
+            }
+            return node_idx;
         }
 
         case T_LPAREN: {
@@ -616,7 +637,7 @@ ASTNodeIdx_t parse_statement(void) {
         }
 
         case T_LBRACE: {
-            // Compound statement - creates a new scope
+            // Compound statement - creates a new scope (C99 compliant)
             next_token(); // consume '{'
             
             // Enter new scope for this block
@@ -626,49 +647,33 @@ ASTNodeIdx_t parse_statement(void) {
             ASTNodeIdx_t first_stmt = 0;
             ASTNodeIdx_t last_stmt = 0;
 
-            // Parse statements until '}'
+            // C99: Parse mixed declarations and statements
             while (peek_token().id != T_RBRACE && peek_token().id != T_EOF) {
-                ASTNodeIdx_t stmt;
+                ASTNodeIdx_t stmt = 0;
                 Token_t next_token_peek = peek_token();
                 
-                // If this looks like a declaration, handle it directly here
-                if (next_token_peek.id == T_INT || next_token_peek.id == T_CHAR || 
-                    next_token_peek.id == T_FLOAT || next_token_peek.id == T_DOUBLE || 
-                    next_token_peek.id == T_VOID) {
-                    // Parse variable declaration directly
+                // C99: Declarations can appear anywhere in a block, mixed with statements
+                if (is_type_specifier_start(next_token_peek.id)) {
+                    // Parse declaration
                     stmt = parse_declaration();
                 } else {
-                    // Parse as regular statement
+                    // Parse statement
                     stmt = parse_statement();
                 }
+                
                 if (!stmt) break;
                 
-                // Link statements properly into the compound statement
+                // Chain all statements/declarations sequentially
                 if (!first_stmt) {
                     first_stmt = stmt;
                     last_stmt = stmt;
-                    
-                    // Link compound statement to first statement
-                    if (compound) {
-                        HBNode *comp_node = HBGet(compound, HBMODE_AST);
-                        if (comp_node) {
-                            comp_node->ast.children.child1 = first_stmt;
-                        }
-                    }
                 } else {
-                    // Chain subsequent statements using child2 as 'next' pointer
-                    // BUT: Be careful not to overwrite conditional union fields for if/while statements
+                    // Link statements using child2 as next pointer for all node types
                     if (last_stmt) {
                         HBNode *last_node = HBGet(last_stmt, HBMODE_AST);
                         if (last_node) {
-                            // Check if this is a conditional statement (if/while) that uses the conditional union
-                            if (last_node->ast.type == AST_STMT_IF || last_node->ast.type == AST_STMT_WHILE) {
-                                // For conditional statements, use child4 for chaining to avoid conflicts
-                                last_node->ast.children.child4 = stmt;
-                            } else {
-                                // For other statements, use child2 as normal
-                                last_node->ast.children.child2 = stmt;
-                            }
+                            // Use generic children structure for consistent chaining
+                            last_node->ast.children.child2 = stmt;
                         }
                     }
                     last_stmt = stmt;
@@ -676,6 +681,17 @@ ASTNodeIdx_t parse_statement(void) {
             }
 
             expect_token(T_RBRACE);
+            
+            // Set up the compound statement properly
+            if (compound) {
+                HBNode *comp_node = HBGet(compound, HBMODE_AST);
+                if (comp_node) {
+                    // In C99, all declarations and statements are mixed in one list
+                    comp_node->ast.compound.declarations = 0;      // Not used in C99 mixed mode
+                    comp_node->ast.compound.statements = first_stmt; // All items in sequence
+                    comp_node->ast.compound.scope_idx = parser_state.scope_depth; // Current scope
+                }
+            }
             
             // Exit scope when leaving the block
             exit_scope();
@@ -733,21 +749,31 @@ ASTNodeIdx_t parse_declaration(void) {
 
     // Check if this is a function definition
     if (peek_token().id == T_LPAREN) {
-        // Function definition - functions have file scope (depth 0)
+        // Function definition - functions have file scope (depth 0) in C99
+        // But first ensure we're at file scope for function definitions
+        if (parser_state.scope_depth != 0) {
+            SourceLocation_t location = error_create_location(tstore_getidx());
+            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                             "Function definition not allowed in block scope", 
+                             "C99: Functions must be defined at file scope", "parser", NULL);
+            return 0;
+        }
+        
         parser_state.in_function = 1;
         add_symbol(id_token.pos, SYM_FUNCTION, tstore_getidx());
 
         next_token();  // consume '('
         
         // Enter function parameter scope (depth 1 for C99 function scope)
+        int saved_scope = parser_state.scope_depth;
         parser_state.scope_depth = 1;
         
-        // Parse parameters (simple implementation)
+        // Parse parameters (C99 compliant parameter handling)
         while (peek_token().id != T_RPAREN && peek_token().id != T_EOF) {
             // Parse parameter type
-            if (peek_token().id == T_INT || peek_token().id == T_CHAR || peek_token().id == T_FLOAT) {
-                next_token();  // consume type
-                if (peek_token().id == T_ID) {
+            if (is_type_specifier_start(peek_token().id)) {
+                TypeSpecifier_t param_type = parse_type_specifiers();
+                if (param_type.is_valid && peek_token().id == T_ID) {
                     Token_t param_token = peek_token();
                     next_token();  // consume parameter name
                     // Parameters have function scope (depth 1) in C99
@@ -756,9 +782,16 @@ ASTNodeIdx_t parse_declaration(void) {
                 // Handle comma between parameters
                 if (peek_token().id == T_COMMA) {
                     next_token();  // consume comma
+                } else if (peek_token().id != T_RPAREN) {
+                    // Invalid parameter list
+                    break;
                 }
             } else {
-                // Skip unknown tokens to avoid infinite loop
+                // Skip unknown tokens to avoid infinite loop, but report error
+                SourceLocation_t location = error_create_location(tstore_getidx());
+                error_core_report(ERROR_WARNING, ERROR_SYNTAX, &location, 2002,
+                                 "Unexpected token in parameter list", 
+                                 "Check parameter syntax", "parser", NULL);
                 next_token();
             }
         }
@@ -771,18 +804,21 @@ ASTNodeIdx_t parse_declaration(void) {
             ASTNodeIdx_t func_node = create_ast_node(AST_FUNCTION_DEF, token_idx);
             if (func_node) {
                 HBNode *node = HBGet(func_node, HBMODE_AST);
-                node->ast.binary.value.string_pos = id_token.pos;  // Function name
-                node->ast.children.child1 = body;
+                if (node) {
+                    // Store function name in proper field
+                    node->ast.binary.value.string_pos = id_token.pos;  // Function name
+                    node->ast.children.child1 = body;  // Function body
+                }
             }
             // Exit function scope back to file scope (depth 0)
             parser_state.in_function = 0;
-            parser_state.scope_depth = 0;
+            parser_state.scope_depth = saved_scope;
             return func_node;
         } else {
             // Function declaration only
             expect_token(T_SEMICOLON);
             // Reset scope depth for function declaration
-            parser_state.scope_depth = 0;
+            parser_state.scope_depth = saved_scope;
             return create_ast_node(AST_FUNCTION_DECL, token_idx);
         }
     } else {
@@ -796,56 +832,78 @@ ASTNodeIdx_t parse_declaration(void) {
             ASTNodeIdx_t decl_node = create_ast_node(AST_VAR_DECL, token_idx);
             if (decl_node) {
                 HBNode *node = HBGet(decl_node, HBMODE_AST);
-                node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
-                node->ast.declaration.initializer = init_expr;
+                if (node) {
+                    node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
+                    node->ast.declaration.initializer = init_expr; // Store initializer expression
+                }
             }
             expect_token(T_SEMICOLON);
             return decl_node;
         } else {
-            expect_token(T_SEMICOLON);
+            // Variable declaration without initializer
             ASTNodeIdx_t decl_node = create_ast_node(AST_VAR_DECL, token_idx);
             if (decl_node) {
                 HBNode *node = HBGet(decl_node, HBMODE_AST);
-                node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
+                if (node) {
+                    node->ast.declaration.symbol_idx = sym_idx;  // Store symbol table index
+                    node->ast.declaration.initializer = 0;      // No initializer
+                }
             }
+            expect_token(T_SEMICOLON);
             return decl_node;
         }
     }
 }
 
 /**
- * @brief Parse the complete program (translation unit)
+ * @brief Parse the complete program (translation unit) - C99 compliant
  */
 ASTNodeIdx_t parse_program(void) {
     ASTNodeIdx_t program_node = create_ast_node(AST_PROGRAM, 0);
     ASTNodeIdx_t first_decl = 0;
     ASTNodeIdx_t last_decl = 0;
 
+    // C99: Translation unit consists of external declarations only
     while (peek_token().id != T_EOF) {
+        // Ensure we're at file scope for all external declarations
+        parser_state.scope_depth = 0;
+        
         ASTNodeIdx_t decl = parse_declaration();
         if (!decl) {
             // Skip to next likely declaration start or advance at least one token
             Token_t token = next_token();
             if (token.id == T_EOF) break;
+            
+            // Try to recover by finding next type specifier
+            while (peek_token().id != T_EOF && !is_type_specifier_start(peek_token().id)) {
+                next_token();
+            }
             continue;
         }
 
-        // Build a proper declaration list
+        // Build a proper declaration list - avoid circular references
         if (!first_decl) {
             // First declaration
             first_decl = decl;
             last_decl = decl;
             
-            // Link program to first declaration
-            HBNode *prog_node = HBGet(program_node, HBMODE_AST);
-            if (prog_node) {
-                prog_node->ast.children.child1 = first_decl;
+            // Link program to first declaration using child1
+            if (program_node) {
+                HBNode *prog_node = HBGet(program_node, HBMODE_AST);
+                if (prog_node) {
+                    prog_node->ast.children.child1 = first_decl;
+                }
             }
         } else {
             // Chain subsequent declarations using child2 as 'next' pointer
-            HBNode *last_node = HBGet(last_decl, HBMODE_AST);
-            if (last_node) {
-                last_node->ast.children.child2 = decl;
+            if (last_decl) {
+                HBNode *last_node = HBGet(last_decl, HBMODE_AST);
+                if (last_node) {
+                    // Ensure we don't create circular references
+                    if (last_node->ast.children.child2 == 0) {
+                        last_node->ast.children.child2 = decl;
+                    }
+                }
             }
             last_decl = decl;
         }

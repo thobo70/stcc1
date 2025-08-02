@@ -591,38 +591,23 @@ static TACOperand translate_identifier(TACBuilder* builder, ASTNode* ast_node) {
  * @brief Translate binary expression
  */
 static TACOperand translate_binary_expr(TACBuilder* builder, ASTNode* ast_node) {
-    // Check if the specified children are valid, if not, look for alternatives
+    // Get left and right operands directly from AST node - no fallbacks allowed
     ASTNodeIdx_t left_node = ast_node->binary.left;
     ASTNodeIdx_t right_node = ast_node->binary.right;
 
-    // If left child is freed, look for a nearby valid identifier node
-    if (left_node != 0) {
-        ASTNode left_child = astore_get(left_node);
-        if (left_child.type == AST_FREE) {
-            // Look for nearby identifier nodes (typical pattern: identifier before literal)
-            for (ASTNodeIdx_t i = (left_node > 5) ? left_node - 5 : 1; i <= left_node + 10; i++) {
-                ASTNode candidate = astore_get(i);
-                if (candidate.type == AST_EXPR_IDENTIFIER) {
-                    left_node = i;
-                    break;
-                }
-            }
-        }
+    // Verify child nodes are valid - if not, it's an error
+    if (left_node == 0 || right_node == 0) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
     }
 
-    // If right child is freed, look for a nearby valid literal node
-    if (right_node != 0) {
-        ASTNode right_child = astore_get(right_node);
-        if (right_child.type == AST_FREE) {
-            // Look for nearby literal nodes
-            for (ASTNodeIdx_t i = (right_node > 5) ? right_node - 5 : 1; i <= right_node + 10; i++) {
-                ASTNode candidate = astore_get(i);
-                if (candidate.type == AST_LIT_INTEGER) {
-                    right_node = i;
-                    break;
-                }
-            }
-        }
+    ASTNode left_child = astore_get(left_node);
+    ASTNode right_child = astore_get(right_node);
+
+    // If children are freed/invalid, this is a parsing error - no fallbacks
+    if (left_child.type == AST_FREE || right_child.type == AST_FREE) {
+        builder->error_count++;
+        return TAC_OPERAND_NONE;
     }
 
     // Translate operands
@@ -694,109 +679,37 @@ static TACOperand translate_unary_expr(TACBuilder* builder, ASTNode* ast_node) {
  * @brief Translate assignment expression
  */
 static TACOperand translate_assignment(TACBuilder* builder, ASTNode* ast_node) {
-    // Check the RHS node type for parsing bugs
+    // Check the RHS node type for parsing structure issues
     ASTNode rhs_node = astore_get(ast_node->binary.right);
     
-    // Check for parsing bug where RHS points to another assignment instead of the binary expression
+    // The parser has a structural issue where assignments are chained incorrectly
+    // Instead of fallbacks, we need to understand the parser's actual structure
     if (rhs_node.type == AST_EXPR_ASSIGN) {
-        // Get the LHS variable
-        TACOperand lhs = tac_build_from_ast(builder, ast_node->binary.left);
-        if (lhs.type == TAC_OP_NONE) {
-            builder->error_count++;
-            return TAC_OPERAND_NONE;
-        }
+        // This indicates the parser chains assignments in a non-standard way
+        // We need to find the correct operand structure
         
-        // Search backwards from current assignment to find the binary expression that should be the RHS
-        // The parser creates binary expressions just before the assignment that uses them
-        ASTNodeIdx_t binary_expr_node = 0;
+        // For now, report this as a structural issue that needs parser fixes
+        printf("DEBUG: Assignment RHS points to another assignment (parser structure issue)\n");
+        printf("DEBUG: This indicates the parser needs to be fixed to generate proper AST structure\n");
         
-        // Search for the binary expression in a small range before this assignment
-        // Since we don't know the exact node index of this assignment, search broadly
-        for (ASTNodeIdx_t i = 1; i <= 24 && binary_expr_node == 0; i++) {
-            ASTNode candidate = astore_get(i);
-            if (candidate.type == AST_EXPR_BINARY_OP) {
-                // Check if this binary operation involves the LHS variable
-                ASTNode left_operand = astore_get(candidate.binary.left);
-                if (left_operand.type == AST_EXPR_IDENTIFIER) {
-                    // Use symbol indices to compare identifiers
-                    SymIdx_t left_symbol = left_operand.binary.value.symbol_idx;
-                    ASTNode lhs_node = astore_get(ast_node->binary.left);
-                    SymIdx_t lhs_symbol = lhs_node.binary.value.symbol_idx;
-                    
-                    if (left_symbol != 0 && left_symbol == lhs_symbol) {
-                        // Found the binary expression that matches the LHS variable
-                        binary_expr_node = i;
-                        break;
-                    }
-                }
-            }
-        }
-        
-        if (binary_expr_node != 0) {
-            // Process the correct binary expression
-            TACOperand rhs = tac_build_from_ast(builder, binary_expr_node);
-            if (rhs.type != TAC_OP_NONE) {
-                tac_emit_assign(builder, lhs, rhs);
-                return lhs;
-            }
-        }
-        
-        // If no binary expression found, this is an error case
+        // Process both assignments, but we can't determine the correct RHS expression
+        // This will result in incorrect TAC until the parser is fixed
         builder->error_count++;
         return TAC_OPERAND_NONE;
     }
     
-    // Check for the return statement bug
+    // Check for parsing error where RHS points to return statement  
     if (rhs_node.type == AST_STMT_RETURN) {
-        // Assignment RHS incorrectly points to return statement, implement workaround
-        
-        // Get the LHS (should be the variable being assigned to)
-        TACOperand lhs = tac_build_from_ast(builder, ast_node->binary.left);
-        if (lhs.type == TAC_OP_NONE) {
-            builder->error_count++;
-            return TAC_OPERAND_NONE;
-        }
-        
-        // Search for the binary expression that should be the RHS  
-        // Look backward from the return statement to find a binary operation
-        ASTNodeIdx_t search_end = ast_node->binary.right;
-        ASTNodeIdx_t rhs_binary_expr = 0;
-        
-        for (ASTNodeIdx_t i = (search_end > 20) ? search_end - 20 : 1; 
-             i < search_end && rhs_binary_expr == 0; i++) {
-            ASTNode candidate = astore_get(i);
-            if (candidate.type == AST_EXPR_BINARY_OP) {
-                rhs_binary_expr = i;
-                break;
-            }
-        }
-        
-        if (rhs_binary_expr != 0) {
-            // Process the binary expression normally
-            TACOperand rhs = tac_build_from_ast(builder, rhs_binary_expr);
-            if (rhs.type != TAC_OP_NONE) {
-                tac_emit_assign(builder, lhs, rhs);
-                return lhs;
-            }
-        }
-        
-        // If no binary expression found, this is an error
+        // This indicates a parsing error - assignments should not reference statements
         builder->error_count++;
         return TAC_OPERAND_NONE;
     }
     
-    // Normal assignment processing
+    // Normal assignment processing - get operands directly from AST structure
+    TACOperand lhs = tac_build_from_ast(builder, ast_node->binary.left);
     TACOperand rhs = tac_build_from_ast(builder, ast_node->binary.right);
 
-    if (rhs.type == TAC_OP_NONE) {
-        builder->error_count++;
-        return TAC_OPERAND_NONE;
-    }
-
-    // Translate left-hand side (should be lvalue)
-    TACOperand lhs = tac_build_from_ast(builder, ast_node->binary.left);
-
-    if (lhs.type == TAC_OP_NONE) {
+    if (lhs.type == TAC_OP_NONE || rhs.type == TAC_OP_NONE) {
         builder->error_count++;
         return TAC_OPERAND_NONE;
     }
@@ -882,48 +795,22 @@ static void translate_while_stmt(TACBuilder* builder, ASTNode* ast_node) {
  * @brief Translate return statement
  */
 static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
-    // Check all possible child nodes for return value
-    ASTNodeIdx_t return_value_node = 0;
-
-    // Check child1 first
+    // Get return value directly from child1 - no fallbacks allowed
     if (ast_node->children.child1 != 0) {
         ASTNode child1 = astore_get(ast_node->children.child1);
-        if (child1.type != AST_FREE) {
-            return_value_node = ast_node->children.child1;
+        
+        // If child is freed or invalid, this is a parsing error
+        if (child1.type == AST_FREE) {
+            builder->error_count++;
+            return;
         }
-    }
-
-    // If child1 is freed, look for nearby identifier nodes that could be the return value
-    if (return_value_node == 0 && ast_node->children.child1 != 0) {
-        // Look for nearby identifier nodes (typical pattern for 'return x')
-        ASTNodeIdx_t start_search = (ast_node->children.child1 > 10) ? ast_node->children.child1 - 10 : 1;
-        for (ASTNodeIdx_t i = start_search; i <= ast_node->children.child1 + 15; i++) {
-            ASTNode candidate = astore_get(i);
-            if (candidate.type == AST_EXPR_IDENTIFIER) {
-                return_value_node = i;
-                break;
-            }
-            // Also look for literal values (e.g., return 10;)
-            if (candidate.type == AST_LIT_INTEGER) {
-                return_value_node = i;
-                break;
-            }
-        }
-    }
-
-    // Check other children as backup
-    if (return_value_node == 0 && ast_node->children.child2 != 0) {
-        ASTNode child2 = astore_get(ast_node->children.child2);
-        if (child2.type != AST_FREE) {
-            return_value_node = ast_node->children.child2;
-        }
-    }
-
-    if (return_value_node != 0) {
+        
         // Return with value
-        TACOperand value = tac_build_from_ast(builder, return_value_node);
+        TACOperand value = tac_build_from_ast(builder, ast_node->children.child1);
         if (value.type != TAC_OP_NONE) {
             tac_emit_instruction(builder, TAC_RETURN, TAC_OPERAND_NONE, value, TAC_OPERAND_NONE);
+        } else {
+            builder->error_count++;
         }
     } else {
         // Return void

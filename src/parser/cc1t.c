@@ -9,6 +9,7 @@
  *
  */
 #include <stdio.h>
+#include <string.h>
 
 #include "../storage/sstore.h"
 #include "../storage/astore.h"
@@ -18,7 +19,7 @@
 // Function prototypes
 static const char* ast_type_to_string(ASTNodeType type);
 static const char* sym_type_to_string(SymType type);
-static void print_ast_tree(ASTNodeIdx_t idx, int depth);
+static void print_ast_tree(ASTNodeIdx_t root_idx);
 static void print_symbol_table(const char* symfile_path);
 
 /**
@@ -125,125 +126,194 @@ static const char* sym_type_to_string(SymType type) {
  * @brief Print AST tree in hierarchical format
  */
 /**
- * @brief Print AST tree recursively
- * @param idx Root node index
- * @param depth Current depth for indentation
- * @note Currently unused in main display but available for tree visualization
+ * @brief Print ASCII tree prefix for tree visualization
  */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-static void print_ast_tree(ASTNodeIdx_t idx, int depth) {
-    if (idx == 0) return;
-
-    ASTNode node = astore_get(idx);
-
-    // Print indentation
-    for (int i = 0; i < depth; i++) {
-        printf("  ");
+static void print_tree_prefix(const char* prefix, int is_last, int is_root) {
+    if (is_root) {
+        printf("├─ ");
+    } else {
+        printf("%s", prefix);
+        printf("%s", is_last ? "└─ " : "├─ ");
     }
+}
 
-    printf("[%d] %s", idx, ast_type_to_string(node.type));
-
-    if (node.token_idx != 0) {
-        printf(" (token: %d)", node.token_idx);
-    }
-
-    // Print flags if present
-    if (node.flags != 0) {
-        printf(" (flags: 0x%x)", node.flags);
-    }
-
-    // Print type info if present
-    if (node.type_idx != 0) {
-        printf(" (type: %d)", node.type_idx);
-    }
-
-    // Print node values based on type category
-    switch (node.type) {
+/**
+ * @brief Get node value as string for display
+ */
+static void get_node_value_string(ASTNode *node, char *buffer, size_t buffer_size) {
+    buffer[0] = '\0';
+    
+    switch (node->type) {
         case AST_LIT_INTEGER:
+            snprintf(buffer, buffer_size, " = %ld", node->binary.value.long_value);
+            break;
         case AST_LIT_FLOAT:
+            snprintf(buffer, buffer_size, " = %.2f", node->binary.value.float_value);
+            break;
         case AST_LIT_CHAR:
+            snprintf(buffer, buffer_size, " = '%c'", (char)node->binary.value.long_value);
+            break;
         case AST_LIT_STRING:
-            if (node.binary.value.long_value != 0) {
-                printf(" value: %ld", node.binary.value.long_value);
+            if (node->binary.value.string_pos != 0) {
+                snprintf(buffer, buffer_size, " = \"%s\"", sstore_get(node->binary.value.string_pos));
             }
             break;
         case AST_EXPR_IDENTIFIER:
-            if (node.binary.value.string_pos != 0) {
-                printf(" name_pos: %d", node.binary.value.string_pos);
+            if (node->binary.value.string_pos != 0) {
+                snprintf(buffer, buffer_size, " '%s'", sstore_get(node->binary.value.string_pos));
+            } else if (node->binary.value.symbol_idx != 0) {
+                SymTabEntry sym = symtab_get(node->binary.value.symbol_idx);
+                if (sym.name != 0) {
+                    snprintf(buffer, buffer_size, " '%s' (sym:%d)", 
+                            sstore_get(sym.name), node->binary.value.symbol_idx);
+                }
             }
             break;
         case AST_EXPR_BINARY_OP:
-            printf(" left: %d, right: %d", node.binary.left, node.binary.right);
+            // Show operator if we can determine it from token
+            snprintf(buffer, buffer_size, " (L:%d, R:%d)", node->binary.left, node->binary.right);
             break;
         case AST_EXPR_UNARY_OP:
-            printf(" operand: %d, op: %d", node.unary.operand, node.unary.operator);
+            snprintf(buffer, buffer_size, " (operand:%d)", node->unary.operand);
             break;
-        case AST_STMT_IF:
-        case AST_STMT_WHILE:
-            printf(" condition: %d, then: %d",
-                   node.conditional.condition, node.conditional.then_stmt);
-            if (node.conditional.else_stmt != 0) {
-                printf(", else: %d", node.conditional.else_stmt);
-            }
+        case AST_VAR_DECL:
+            snprintf(buffer, buffer_size, " (sym:%d, init:%d, type:%d)", 
+                    node->declaration.symbol_idx, node->declaration.initializer, node->declaration.type_idx);
             break;
         case AST_STMT_COMPOUND:
-            printf(" declarations: %d, statements: %d",
-                   node.compound.declarations, node.compound.statements);
+            snprintf(buffer, buffer_size, " (decls:%d, stmts:%d, scope:%d)", 
+                    node->compound.declarations, node->compound.statements, node->compound.scope_idx);
             break;
         case AST_EXPR_CALL:
-            printf(" function: %d, args: %d, count: %d",
-                   node.call.function, node.call.arguments, node.call.arg_count);
+            snprintf(buffer, buffer_size, " (func:%d, args:%d, count:%d)",
+                    node->call.function, node->call.arguments, node->call.arg_count);
             break;
         default:
-            // Generic child display
-            if (node.children.child1 != 0 || node.children.child2 != 0 ||
-                node.children.child3 != 0 || node.children.child4 != 0) {
-                printf(" children: %d, %d, %d, %d",
-                       node.children.child1, node.children.child2,
-                       node.children.child3, node.children.child4);
+            // Show non-zero children
+            if (node->children.child1 != 0 || node->children.child2 != 0 ||
+                node->children.child3 != 0 || node->children.child4 != 0) {
+                snprintf(buffer, buffer_size, " (%d,%d,%d,%d)",
+                        node->children.child1, node->children.child2,
+                        node->children.child3, node->children.child4);
             }
-            break;
-    }
-
-    printf("\n");
-
-    // Recursively print child nodes based on node type
-    switch (node.type) {
-        case AST_EXPR_BINARY_OP:
-            if (node.binary.left != 0) print_ast_tree(node.binary.left, depth + 1);
-            if (node.binary.right != 0) print_ast_tree(node.binary.right, depth + 1);
-            break;
-        case AST_EXPR_UNARY_OP:
-            if (node.unary.operand != 0) print_ast_tree(node.unary.operand, depth + 1);
-            break;
-        case AST_STMT_IF:
-        case AST_STMT_WHILE:
-            if (node.conditional.condition != 0) print_ast_tree(node.conditional.condition, depth + 1);
-            if (node.conditional.then_stmt != 0) print_ast_tree(node.conditional.then_stmt, depth + 1);
-            if (node.conditional.else_stmt != 0) print_ast_tree(node.conditional.else_stmt, depth + 1);
-            break;
-        case AST_STMT_COMPOUND:
-            if (node.compound.declarations != 0) print_ast_tree(node.compound.declarations, depth + 1);
-            if (node.compound.statements != 0) print_ast_tree(node.compound.statements, depth + 1);
-            break;
-        case AST_EXPR_CALL:
-            if (node.call.function != 0) print_ast_tree(node.call.function, depth + 1);
-            if (node.call.arguments != 0) print_ast_tree(node.call.arguments, depth + 1);
-            break;
-        default:
-            // Generic child traversal
-            if (node.children.child1 != 0) print_ast_tree(node.children.child1, depth + 1);
-            if (node.children.child2 != 0) print_ast_tree(node.children.child2, depth + 1);
-            if (node.children.child3 != 0) print_ast_tree(node.children.child3, depth + 1);
-            if (node.children.child4 != 0) print_ast_tree(node.children.child4, depth + 1);
             break;
     }
 }
-#pragma GCC diagnostic pop
 
 /**
- * @brief Print symbol table content
+ * @brief Print AST tree in ASCII tree format
+ */
+static void print_ast_tree_recursive(ASTNodeIdx_t idx, const char* prefix, int is_last, int depth) {
+    if (idx == 0 || depth > 15) return; // Prevent infinite recursion
+    
+    // Simple cycle detection - don't revisit nodes we've already seen at this depth
+    static ASTNodeIdx_t visited[100] = {0};
+    static int visit_count = 0;
+    
+    if (depth == 0) {
+        visit_count = 0; // Reset for new tree
+    }
+    
+    // Check for cycles
+    for (int i = 0; i < visit_count; i++) {
+        if (visited[i] == idx) {
+            printf("%s%s[%d] **CYCLE DETECTED**\n", prefix, is_last ? "└─ " : "├─ ", idx);
+            return;
+        }
+    }
+    
+    if (visit_count < 100) {
+        visited[visit_count++] = idx;
+    }
+    
+    ASTNode node = astore_get(idx);
+    
+    // Print tree connector
+    print_tree_prefix(prefix, is_last, depth == 0);
+    
+    // Print node information
+    char value_str[256];
+    get_node_value_string(&node, value_str, sizeof(value_str));
+    
+    printf("[%d] %s%s", idx, ast_type_to_string(node.type), value_str);
+    
+    // Add metadata
+    if (node.token_idx != 0) printf(" @t%d", node.token_idx);
+    if (node.flags != 0) printf(" flags:0x%x", node.flags);
+    if (node.type_idx != 0) printf(" type:%d", node.type_idx);
+    
+    printf("\n");
+    
+    // Prepare prefix for children
+    char new_prefix[256];
+    snprintf(new_prefix, sizeof(new_prefix), "%s%s", prefix, is_last ? "   " : "│  ");
+    
+    // Collect child indices based on node type
+    ASTNodeIdx_t children[8] = {0}; // Max 8 children for any node type
+    int child_count = 0;
+    
+    switch (node.type) {
+        case AST_EXPR_BINARY_OP:
+        case AST_EXPR_ASSIGN:
+            if (node.binary.left != 0) children[child_count++] = node.binary.left;
+            if (node.binary.right != 0) children[child_count++] = node.binary.right;
+            break;
+            
+        case AST_EXPR_UNARY_OP:
+            if (node.unary.operand != 0) children[child_count++] = node.unary.operand;
+            break;
+            
+        case AST_STMT_IF:
+        case AST_STMT_WHILE:
+            if (node.conditional.condition != 0) children[child_count++] = node.conditional.condition;
+            if (node.conditional.then_stmt != 0) children[child_count++] = node.conditional.then_stmt;
+            if (node.conditional.else_stmt != 0) children[child_count++] = node.conditional.else_stmt;
+            break;
+            
+        case AST_STMT_COMPOUND:
+            if (node.compound.declarations != 0) children[child_count++] = node.compound.declarations;
+            if (node.compound.statements != 0) children[child_count++] = node.compound.statements;
+            break;
+            
+        case AST_EXPR_CALL:
+            if (node.call.function != 0) children[child_count++] = node.call.function;
+            if (node.call.arguments != 0) children[child_count++] = node.call.arguments;
+            break;
+            
+        default:
+            // Generic children - but be more careful about circular references
+            if (node.children.child1 != 0 && node.children.child1 != idx) 
+                children[child_count++] = node.children.child1;
+            if (node.children.child2 != 0 && node.children.child2 != idx) 
+                children[child_count++] = node.children.child2;
+            if (node.children.child3 != 0 && node.children.child3 != idx) 
+                children[child_count++] = node.children.child3;
+            if (node.children.child4 != 0 && node.children.child4 != idx) 
+                children[child_count++] = node.children.child4;
+            break;
+    }
+    
+    // Print children
+    for (int i = 0; i < child_count; i++) {
+        print_ast_tree_recursive(children[i], new_prefix, i == child_count - 1, depth + 1);
+    }
+}
+
+/**
+ * @brief Print AST tree starting from root
+ */
+static void print_ast_tree(ASTNodeIdx_t root_idx) {
+    if (root_idx == 0) {
+        printf("No AST root to display\n");
+        return;
+    }
+    
+    printf("AST Tree Structure:\n");
+    print_ast_tree_recursive(root_idx, "", 1, 0);
+}
+
+/**
+ * @brief Print detailed symbol table content with enhanced formatting
  */
 static void print_symbol_table(const char* symfile_path) {
     printf("\n=== SYMBOL TABLE ===\n");
@@ -260,55 +330,125 @@ static void print_symbol_table(const char* symfile_path) {
     fclose(symfile_check);
 
     int max_entries = (int)(file_size / sizeof(SymTabEntry));
-    printf("Symbol table contains %d entries\n", max_entries);
+    printf("Symbol table contains %d entries (file size: %zu bytes)\n\n", max_entries, file_size);
 
-    for (SymIdx_t idx = 1; idx <= max_entries && idx <= 50; idx++) {
+    // Print table header
+    printf("┌─────┬──────────┬────────────────────┬──────┬─────┬─────┬──────┬────────┬────────────────────┬──────┬───────┐\n");
+    printf("│ Idx │   Type   │       Name         │ Prnt │ Nxt │ Prv │ Chld │ Siblng │       Value        │ Line │ Scope │\n");
+    printf("├─────┼──────────┼────────────────────┼──────┼─────┼─────┼──────┼────────┼────────────────────┼──────┼───────┤\n");
+
+    int shown_entries = 0;
+    int total_active = 0;
+    
+    for (SymIdx_t idx = 1; idx <= max_entries && idx <= 100; idx++) {
         SymTabEntry entry = symtab_get(idx);
 
         if (entry.type == SYM_FREE) {
-            continue;  // Skip free entries
+            continue;  // Skip free entries for main display
         }
 
-        printf("[%d] %s", idx, sym_type_to_string(entry.type));
+        total_active++;
+        shown_entries++;
 
+        // Format name
+        char name_str[21] = "";
         if (entry.name != 0) {
-            printf(" name: \"%s\"", sstore_get(entry.name));
+            const char* name = sstore_get(entry.name);
+            snprintf(name_str, sizeof(name_str), "%.20s", name);
+        } else {
+            strcpy(name_str, "<no name>");
         }
 
-        if (entry.parent != 0) {
-            printf(" parent: %d", entry.parent);
-        }
-
-        if (entry.next != 0) {
-            printf(" next: %d", entry.next);
-        }
-
-        if (entry.prev != 0) {
-            printf(" prev: %d", entry.prev);
-        }
-
-        if (entry.child != 0) {
-            printf(" child: %d", entry.child);
-        }
-
-        if (entry.sibling != 0) {
-            printf(" sibling: %d", entry.sibling);
-        }
-
+        // Format value
+        char value_str[21] = "";
         if (entry.value != 0) {
-            printf(" value: \"%s\"", sstore_get(entry.value));
+            const char* value = sstore_get(entry.value);
+            snprintf(value_str, sizeof(value_str), "%.20s", value);
+        } else {
+            strcpy(value_str, "");
         }
 
-        if (entry.line > 0) {
-            printf(" line: %d", entry.line);
+        // Format type string
+        char type_str[11];
+        snprintf(type_str, sizeof(type_str), "%.10s", sym_type_to_string(entry.type));
+
+        printf("│%4d │%10s│%-20s│%5d │%4d │%4d │%5d │%7d │%-20s│%5d │%6d │\n",
+               idx, type_str, name_str,
+               entry.parent, entry.next, entry.prev, entry.child, entry.sibling,
+               value_str, entry.line, entry.scope_depth);
+    }
+
+    printf("└─────┴──────────┴────────────────────┴──────┴─────┴─────┴──────┴────────┴────────────────────┴──────┴───────┘\n");
+
+    if (max_entries > 100) {
+        printf("... (showing first %d active entries, %d total active, %d total entries)\n", 
+               shown_entries, total_active, max_entries);
+    } else {
+        printf("Total: %d active entries out of %d total entries\n", total_active, max_entries);
+    }
+
+    // Print scope analysis
+    printf("\n=== SCOPE ANALYSIS ===\n");
+    int scope_counts[10] = {0}; // Track up to depth 9
+    int max_scope = 0;
+    
+    for (SymIdx_t idx = 1; idx <= max_entries; idx++) {
+        SymTabEntry entry = symtab_get(idx);
+        if (entry.type != SYM_FREE && entry.scope_depth >= 0 && entry.scope_depth < 10) {
+            scope_counts[entry.scope_depth]++;
+            if (entry.scope_depth > max_scope) {
+                max_scope = entry.scope_depth;
+            }
         }
-
-        printf("\n");
     }
 
-    if (max_entries > 50) {
-        printf("... (showing first 50 entries, %d total entries)\n", max_entries);
+    for (int depth = 0; depth <= max_scope; depth++) {
+        if (scope_counts[depth] > 0) {
+            const char* scope_name;
+            switch (depth) {
+                case 0: scope_name = "File/Global"; break;
+                case 1: scope_name = "Function"; break;
+                default: scope_name = "Block"; break;
+            }
+            printf("Scope depth %d (%s): %d symbols\n", depth, scope_name, scope_counts[depth]);
+        }
     }
+
+    // Print symbol type statistics
+    printf("\n=== SYMBOL TYPE STATISTICS ===\n");
+    int type_counts[20] = {0}; // Enough for all symbol types
+    
+    for (SymIdx_t idx = 1; idx <= max_entries; idx++) {
+        SymTabEntry entry = symtab_get(idx);
+        if (entry.type != SYM_FREE && entry.type < 20) {
+            type_counts[entry.type]++;
+        }
+    }
+
+    for (int type = 0; type < 20; type++) {
+        if (type_counts[type] > 0) {
+            printf("%-12s: %d\n", sym_type_to_string((SymType)type), type_counts[type]);
+        }
+    }
+
+    // Show relationships
+    printf("\n=== SYMBOL RELATIONSHIPS ===\n");
+    int with_parent = 0, with_children = 0, with_siblings = 0, with_next = 0;
+    
+    for (SymIdx_t idx = 1; idx <= max_entries; idx++) {
+        SymTabEntry entry = symtab_get(idx);
+        if (entry.type != SYM_FREE) {
+            if (entry.parent != 0) with_parent++;
+            if (entry.child != 0) with_children++;
+            if (entry.sibling != 0) with_siblings++;
+            if (entry.next != 0) with_next++;
+        }
+    }
+    
+    printf("Symbols with parent:   %d\n", with_parent);
+    printf("Symbols with children: %d\n", with_children);
+    printf("Symbols with siblings: %d\n", with_siblings);
+    printf("Symbols with next:     %d\n", with_next);
 }
 
 int main(int argc, char *argv[]) {
@@ -340,52 +480,66 @@ int main(int argc, char *argv[]) {
 
     printf("=== CC1T: AST and Symbol Table Viewer ===\n");
 
-    // Print AST tree starting from root (typically index 1)
+    // Print AST tree starting from root 
     printf("\n=== ABSTRACT SYNTAX TREE ===\n");
     ASTNodeIdx_t current_idx = astore_getidx();
     printf("Current AST index: %d\n", current_idx);
 
     if (current_idx > 1) {
-        printf("All AST Nodes (including FREE):\n");
-        
-        // Show all nodes including FREE ones to see the full picture
+        // Find the root node (typically AST_PROGRAM or first non-FREE node)
+        ASTNodeIdx_t root_idx = 0;
         for (ASTNodeIdx_t i = 1; i < current_idx; i++) {
             ASTNode node = astore_get(i);
-            printf("[%d] %s", i, ast_type_to_string(node.type));
-            
-            if (node.type != AST_FREE) {
-                if (node.token_idx != 0) printf(" (token: %d)", node.token_idx);
-                
-                // Show specific structure based on node type
-                switch (node.type) {
-                    case AST_EXPR_BINARY_OP:
-                        printf(" left: %d, right: %d", node.binary.left, node.binary.right);
-                        break;
-                    case AST_EXPR_UNARY_OP:
-                        printf(" operand: %d", node.unary.operand);
-                        break;
-                    case AST_LIT_INTEGER:
-                        printf(" value: %ld", node.binary.value.long_value);
-                        break;
-                    case AST_EXPR_IDENTIFIER:
-                        printf(" name_pos: %d", node.binary.value.string_pos);
-                        break;
-                    case AST_STMT_COMPOUND:
-                        printf(" declarations: %d, statements: %d", 
-                               node.compound.declarations, node.compound.statements);
-                        break;
-                    default:
-                        if (node.children.child1 != 0 || node.children.child2 != 0 ||
-                            node.children.child3 != 0 || node.children.child4 != 0) {
-                            printf(" children: %d, %d, %d, %d",
-                                   node.children.child1, node.children.child2,
-                                   node.children.child3, node.children.child4);
-                        }
-                        break;
+            if (node.type == AST_PROGRAM || node.type == AST_TRANSLATION_UNIT) {
+                root_idx = i;
+                break;
+            }
+        }
+        
+        // If no program node found, use the first non-FREE node
+        if (root_idx == 0) {
+            for (ASTNodeIdx_t i = 1; i < current_idx; i++) {
+                ASTNode node = astore_get(i);
+                if (node.type != AST_FREE) {
+                    root_idx = i;
+                    break;
                 }
             }
-            printf("\n");
         }
+        
+        if (root_idx != 0) {
+            printf("\n");
+            print_ast_tree(root_idx);
+        } else {
+            printf("No valid root node found\n");
+        }
+        
+        // Also show flat list for debugging
+        printf("\n=== ALL AST NODES (FLAT VIEW) ===\n");
+        printf("┌─────┬─────────────────────┬───────┬───────┬──────┬────────────────────────────────────────┐\n");
+        printf("│ Idx │        Type         │ Token │ Flags │ TIdx │                Details                │\n");
+        printf("├─────┼─────────────────────┼───────┼───────┼──────┼────────────────────────────────────────┤\n");
+        
+        for (ASTNodeIdx_t i = 1; i < current_idx; i++) {
+            ASTNode node = astore_get(i);
+            
+            // Format type string
+            char type_str[22];
+            snprintf(type_str, sizeof(type_str), "%.21s", ast_type_to_string(node.type));
+            
+            // Format details
+            char details[41] = "";
+            if (node.type != AST_FREE) {
+                char value_str[256];
+                get_node_value_string(&node, value_str, sizeof(value_str));
+                snprintf(details, sizeof(details), "%.40s", value_str);
+            }
+            
+            printf("│%4d │%-21s│%6d │ 0x%03x │%5d │%-40s│\n",
+                   i, type_str, node.token_idx, node.flags, node.type_idx, details);
+        }
+        printf("└─────┴─────────────────────┴───────┴───────┴──────┴────────────────────────────────────────┘\n");
+        
     } else {
         printf("No AST nodes to display\n");
     }
