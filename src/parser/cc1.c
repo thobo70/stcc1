@@ -338,6 +338,30 @@ static SymIdx_t lookup_symbol(sstore_pos_t name_pos) {
 }
 
 /**
+ * @brief Check if an identifier token is a typedef name
+ * @param token The token to check (must be T_ID)
+ * @return 1 if the identifier is a typedef, 0 otherwise
+ */
+static int is_typedef_name(Token_t token) {
+    if (token.id != T_ID) {
+        return 0;
+    }
+    
+    SymIdx_t sym_idx = lookup_symbol(token.pos);
+    if (sym_idx == 0) {
+        return 0; // Symbol not found
+    }
+    
+    // Get symbol info to check if it's a typedef
+    HBNode *sym_node = HBGet(sym_idx, HBMODE_SYM);
+    if (!sym_node) {
+        return 0;
+    }
+    
+    return (sym_node->sym.type == SYM_TYPEDEF);
+}
+
+/**
  * @brief Add symbol to symbol table with C99 flags from TypeSpecifier_t
  */
 static SymIdx_t add_symbol_with_c99_flags(sstore_pos_t name_pos, SymType type, TokenIdx_t token_idx, TypeSpecifier_t *type_spec) {
@@ -1330,11 +1354,13 @@ ASTNodeIdx_t parse_declaration(void) {
         ASTNodeIdx_t last_decl = 0;
         
         do {
-            // Create symbol for this declarator
-            SymIdx_t sym_idx = add_symbol_with_c99_flags(identifier_pos, SYM_VARIABLE, tstore_getidx(), &type_spec);
+            // Create symbol for this declarator - check if it's a typedef
+            int sym_type = type_spec.has_typedef ? SYM_TYPEDEF : SYM_VARIABLE;
+            ASTNodeType ast_type = type_spec.has_typedef ? AST_TYPEDEF_DECL : AST_VAR_DECL;
+            SymIdx_t sym_idx = add_symbol_with_c99_flags(identifier_pos, sym_type, tstore_getidx(), &type_spec);
 
-            // Handle optional initializer
-            ASTNodeIdx_t decl_node = create_ast_node(AST_VAR_DECL, token_idx);
+            // Handle optional initializer (typedefs cannot have initializers)
+            ASTNodeIdx_t decl_node = create_ast_node(ast_type, token_idx);
             if (decl_node) {
                 HBNode *node = HBGet(decl_node, HBMODE_AST);
                 if (node) {
@@ -1342,9 +1368,20 @@ ASTNodeIdx_t parse_declaration(void) {
                     node->ast.declaration.type_idx = 0;
                     
                     if (peek_token().id == T_ASSIGN) {
-                        next_token();  // consume '='
-                        ASTNodeIdx_t init_expr = parse_expression();
-                        node->ast.declaration.initializer = init_expr;
+                        if (type_spec.has_typedef) {
+                            // Error: typedefs cannot have initializers
+                            SourceLocation_t location = error_create_location(tstore_getidx());
+                            error_core_report(ERROR_ERROR, ERROR_SYNTAX, &location, 2001,
+                                             "Typedef declarations cannot have initializers", 
+                                             "Remove the initializer from the typedef", "parser", NULL);
+                            next_token();  // consume '=' to continue parsing
+                            parse_expression(); // consume the expression to avoid further errors
+                            node->ast.declaration.initializer = 0;
+                        } else {
+                            next_token();  // consume '='
+                            ASTNodeIdx_t init_expr = parse_expression();
+                            node->ast.declaration.initializer = init_expr;
+                        }
                     } else {
                         node->ast.declaration.initializer = 0;
                     }
@@ -1710,6 +1747,22 @@ static TypeSpecifier_t parse_type_specifiers(void) {
                 advance = 0; // Don't advance again - we already did it manually
                 break;
 
+            case T_ID:
+                // Handle typedef names
+                if (is_typedef_name(token)) {
+                    if (type.base_type != 0) {
+                        type.is_valid = 0; // Cannot have multiple base types
+                        return type;
+                    }
+                    // Mark this as a typedef reference
+                    type.base_type = T_ID; // Use T_ID to indicate typedef name
+                    advance = 1;
+                } else {
+                    // Not a typedef name, stop parsing type specifiers
+                    return type;
+                }
+                break;
+
             default:
                 // Not a type specifier, stop parsing
                 if (tokens_consumed == 0) {
@@ -1810,14 +1863,25 @@ static sstore_pos_t parse_declarator(void) {
  * @brief Check if the current token starts a type specifier
  */
 static int is_type_specifier_start(TokenID_t token_id) {
-    return (token_id == T_INT || token_id == T_CHAR || token_id == T_FLOAT ||
-            token_id == T_DOUBLE || token_id == T_VOID || token_id == T_LONG ||
-            token_id == T_SHORT || token_id == T_UNSIGNED || token_id == T_SIGNED ||
-            token_id == T_STRUCT || token_id == T_UNION || token_id == T_ENUM ||
-            token_id == T_TYPEDEF || token_id == T_EXTERN || token_id == T_STATIC ||
-            token_id == T_AUTO || token_id == T_REGISTER || token_id == T_CONST ||
-            token_id == T_VOLATILE || token_id == T_INLINE || token_id == T_RESTRICT ||
-            token_id == T_COMPLEX || token_id == T_IMAGINARY || token_id == T_BOOL);
+    // Check built-in type keywords and storage class specifiers
+    if (token_id == T_INT || token_id == T_CHAR || token_id == T_FLOAT ||
+        token_id == T_DOUBLE || token_id == T_VOID || token_id == T_LONG ||
+        token_id == T_SHORT || token_id == T_UNSIGNED || token_id == T_SIGNED ||
+        token_id == T_STRUCT || token_id == T_UNION || token_id == T_ENUM ||
+        token_id == T_TYPEDEF || token_id == T_EXTERN || token_id == T_STATIC ||
+        token_id == T_AUTO || token_id == T_REGISTER || token_id == T_CONST ||
+        token_id == T_VOLATILE || token_id == T_INLINE || token_id == T_RESTRICT ||
+        token_id == T_COMPLEX || token_id == T_IMAGINARY || token_id == T_BOOL) {
+        return 1;
+    }
+    
+    // Check if this identifier is a typedef name
+    if (token_id == T_ID) {
+        Token_t token = peek_token();
+        return is_typedef_name(token);
+    }
+    
+    return 0;
 }
 
 /**
