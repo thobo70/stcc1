@@ -540,10 +540,25 @@ ASTNodeIdx_t parse_initializer_list(void) {
                 first_init = element;
                 last_init = element;
             } else {
-                // Use child2 for chaining (similar to statement chaining)
+                // Use next_stmt for chaining (universal approach)
                 HBNode *last_node = HBGet(last_init, HBMODE_AST);
                 if (last_node) {
-                    last_node->ast.children.child2 = element;
+                    // Use appropriate next_stmt field - now in header!
+                    switch (last_node->ast.type) {
+                        case AST_EXPR_BINARY_OP:
+                        case AST_EXPR_ASSIGN:
+                        case AST_EXPR_IDENTIFIER:
+                            last_node->ast.next_stmt = element;
+                            break;
+                        case AST_LIT_INTEGER:
+                        case AST_LIT_STRING:
+                        case AST_LIT_CHAR:
+                            last_node->ast.next_stmt = element;
+                            break;
+                        default:
+                            last_node->ast.next_stmt = element;
+                            break;
+                    }
                     last_init = element;
                 }
             }
@@ -1108,17 +1123,54 @@ ASTNodeIdx_t parse_statement(void) {
                 
                 if (!stmt) break;
                 
-                // Chain all statements properly - manifest compliant (no circular references)
+                // Universal statement chaining using next_stmt field
                 if (!first_stmt) {
                     first_stmt = stmt;
                     last_stmt = stmt;
                 } else if (last_stmt && stmt != last_stmt) {  // Prevent self-references
-                    // Chain statements using a clean approach that respects AST node structure
                     HBNode *last_node = HBGet(last_stmt, HBMODE_AST);
                     if (last_node) {
-                        // Use child2 for statement chaining in compound statements
-                        // This is safe because most statements don't use child2 for their own structure
-                        last_node->ast.children.child2 = stmt;
+                        // All AST node structures now have a next_stmt field - universal chaining!
+                        switch (last_node->ast.type) {
+                            case AST_STMT_FOR:
+                            case AST_EXPR_CONDITIONAL:
+                            case AST_STMT_LABEL:
+                            case AST_STMT_RETURN:
+                                last_node->ast.next_stmt = stmt;
+                                break;
+                            case AST_EXPR_BINARY_OP:
+                            case AST_EXPR_ASSIGN:
+                            case AST_EXPR_IDENTIFIER:
+                            case AST_LIT_INTEGER:
+                            case AST_LIT_STRING:
+                            case AST_LIT_CHAR:
+                                last_node->ast.next_stmt = stmt;
+                                break;
+                            case AST_STMT_IF:
+                            case AST_STMT_WHILE:
+                            case AST_STMT_SWITCH:
+                                last_node->ast.next_stmt = stmt;
+                                break;
+                            case AST_STMT_COMPOUND:
+                                last_node->ast.next_stmt = stmt;
+                                break;
+                            case AST_VAR_DECL:
+                            case AST_FUNCTION_DEF:
+                            case AST_PARAM_DECL:
+                                last_node->ast.next_stmt = stmt;
+                                break;
+                            case AST_EXPR_CALL:
+                                last_node->ast.next_stmt = stmt;
+                                break;
+                            case AST_EXPR_UNARY_OP:
+                            case AST_EXPR_SIZEOF:
+                                last_node->ast.next_stmt = stmt;
+                                break;
+                            default:
+                                // All structures have next_stmt now, but add safety check
+                                printf("Warning: Unknown node type %d in statement chain\n", last_node->ast.type);
+                                break;
+                        }
                     }
                     last_stmt = stmt;
                 }
@@ -1304,11 +1356,11 @@ ASTNodeIdx_t parse_declaration(void) {
                 first_decl = decl_node;
                 last_decl = decl_node;
             } else {
-                // Chain using child2 (similar to statement chaining)
+                // Chain using next_stmt (universal approach)
                 if (last_decl) {
                     HBNode *last_node = HBGet(last_decl, HBMODE_AST);
                     if (last_node) {
-                        last_node->ast.children.child2 = decl_node;
+                        last_node->ast.next_stmt = decl_node;
                     }
                 }
                 last_decl = decl_node;
@@ -1376,13 +1428,13 @@ ASTNodeIdx_t parse_program(void) {
                 }
             }
         } else {
-            // Chain subsequent declarations using child2 as 'next' pointer
+            // Chain subsequent declarations using next_stmt (universal approach)
             if (last_decl) {
                 HBNode *last_node = HBGet(last_decl, HBMODE_AST);
                 if (last_node) {
                     // Ensure we don't create circular references
-                    if (last_node->ast.children.child2 == 0) {
-                        last_node->ast.children.child2 = decl;
+                    if (last_node->ast.next_stmt == 0) {
+                        last_node->ast.next_stmt = decl;
                     }
                 }
             }

@@ -2,6 +2,25 @@
 
 This document provides a comprehensive reference for all AST node types in the STCC1 compiler, including their content, parameters, meaning, and linking relationships.
 
+## ⚠️ ARCHITECTURE UPDATE: Direct Statement Chaining
+
+**BREAKING CHANGE**: The `next_stmt` field has been moved from union structures to the AST node header for universal direct access.
+
+### What Changed:
+- **Header Field**: `next_stmt` (ASTNodeIdx_t, 2 bytes) added to node header (now 14 bytes)
+- **Direct Access**: All nodes now support `node.next_stmt` without type-specific logic
+- **Union Reduction**: All union structures reduced from 14 to 12 bytes
+- **24-byte node size maintained** - still exactly 24 bytes per node
+
+### Migration Impact:
+- ✅ **Parser**: Extremely simplified - direct `node.next_stmt = next_node`
+- ✅ **TAC Builder**: No more switch statements - just `node.next_stmt`  
+- ✅ **AST Visitors**: Universal field access across all node types
+- ✅ **Performance**: Eliminated conditional logic for statement chaining
+- ⚠️ **Breaking**: All union structures reduced by 2 bytes (14→12 bytes)
+
+---
+
 ## Verified Type Information
 
 All type sizes and indexing schemes have been verified against the STCC1 source code:
@@ -23,17 +42,19 @@ All type sizes and indexing schemes have been verified against the STCC1 source 
 
 All AST nodes in STCC1 are **exactly 24 bytes** and share a common structure that enables efficient memory management and fast traversal. Each node consists of:
 
-1. **Common Header (10 bytes)**: Shared by all node types
-2. **Union Data (14 bytes)**: Type-specific data structures
+1. **Common Header (14 bytes)**: Shared by all node types (expanded from 10 bytes)
+2. **Union Data (12 bytes)**: Type-specific data structures (reduced from 14 bytes)
 
 ### Common Header Fields
 - `type` (ASTNodeType, 2 bytes): The specific node type (see [Node Type Categories](#node-type-categories))
+- `type` (ASTNodeType, 2 bytes): The specific node type (see [Node Type Categories](#node-type-categories))
 - `flags` (ASTNodeFlags, 2 bytes): Compilation phase flags and status bits
-- `token_idx` (TokenIdx_t, 4 bytes): Reference to source token for error reporting and debugging
-- `type_idx` (TypeIdx_t, 2 bytes): Type information index (populated during semantic analysis)
+- `token_idx` (TokenIdx_t, 4 bytes): Source token reference for error reporting and debugging
+- `type_idx` (TypeIdx_t, 2 bytes): Type information index for semantic analysis
+- `next_stmt` (ASTNodeIdx_t, 2 bytes): **Universal statement chaining field** (moved from unions)
 
 ### Union Data Structures
-The remaining 14 bytes use one of several union structures optimized for different node categories:
+The remaining 12 bytes use one of several union structures optimized for different node categories:
 - **`children`**: Generic 4-child structure for complex nodes
 - **`binary`**: Two-child structure with additional value data
 - **`unary`**: Single-child structure with operator and data
@@ -491,8 +512,8 @@ void process_compound_statement(ASTNode *compound) {
         // Process current statement
         process_statement(&stmt);
         
-        // Move to next statement in chain
-        stmt_idx = stmt.children.child2;
+        // Move to next statement - now extremely simple!
+        stmt_idx = stmt.next_stmt;
     }
     
     // Exit the compound statement's scope
@@ -622,7 +643,9 @@ void good_compound_processing(ASTNode *compound) {
     while (stmt_idx != 0) {
         ASTNode stmt = astore_get(stmt_idx);
         process_statement(&stmt);
-        stmt_idx = stmt.children.child2;  // Follow the chain
+        
+        // Direct access to next_stmt - no conditional logic needed!
+        stmt_idx = stmt.next_stmt;
     }
 }
 ```
@@ -750,9 +773,11 @@ Each node type uses one of these specialized data layouts:
 │ child1           │ child2           │ child3           │ child4           │
 │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │
 │ 2 bytes          │ 2 bytes          │ 2 bytes          │ 2 bytes          │
-├──────────────────┴──────────────────┴──────────────────┴──────────────────┤
-│                           padding (6 bytes)                                │
-└─────────────────────────────────────────────────────────────────────────────┘
+├──────────────────┼──────────────────┴──────────────────┴──────────────────┤
+│ next_stmt        │                    padding (4 bytes)                   │
+│ (ASTNodeIdx_t)   │                                                        │
+│ 2 bytes          │                                                        │
+└──────────────────┴────────────────────────────────────────────────────────┘
 ```
 **Used by**: AST_STMT_FOR, AST_EXPR_CONDITIONAL, AST_STMT_LABEL, AST_STMT_RETURN
 
@@ -765,9 +790,9 @@ Each node type uses one of these specialized data layouts:
 │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │              8 bytes                │
 │ 2 bytes          │ 2 bytes          │  ┌─────────────────────────────────┐ │
 ├──────────────────┼──────────────────┤  │ symbol_idx (SymIdx_t)        │ │
-│     padding      │                  │  │ string_pos (sstore_pos_t)       │ │
-│    (2 bytes)     │                  │  │ long_value (int64_t)            │ │
-│                  │                  │  │ float_value (double)            │ │
+│ next_stmt        │                  │  │ string_pos (sstore_pos_t)       │ │
+│ (ASTNodeIdx_t)   │                  │  │ long_value (int64_t)            │ │
+│ 2 bytes          │                  │  │ float_value (double)            │ │
 │                  │                  │  └─────────────────────────────────┘ │
 └──────────────────┴──────────────────┴─────────────────────────────────────┘
 ```
@@ -778,12 +803,12 @@ Each node type uses one of these specialized data layouts:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           'unary' Structure                                │
 ├──────────────────┬──────────────────┬─────────────────┬───────────────────┤
-│ operand          │ operator         │ data (union)    │     padding       │
-│ (ASTNodeIdx_t)   │ (TokenID_t)      │    4 bytes      │    (6 bytes)      │
-│ 2 bytes          │ 2 bytes          │ ┌─────────────┐ │                   │
-│                  │                  │ │ int_value   │ │                   │
-│                  │                  │ │ float_value │ │                   │
-│                  │                  │ │ string_pos  │ │                   │
+│ operand          │ operator         │ data (union)    │     next_stmt     │
+│ (ASTNodeIdx_t)   │ (TokenID_t)      │    4 bytes      │  (ASTNodeIdx_t)   │
+│ 2 bytes          │ 2 bytes          │ ┌─────────────┐ │     2 bytes       │
+│                  │                  │ │ int_value   │ ├───────────────────┤
+│                  │                  │ │ float_value │ │    padding        │
+│                  │                  │ │ string_pos  │ │   (2 bytes)       │
 │                  │                  │ └─────────────┘ │                   │
 └──────────────────┴──────────────────┴─────────────────┴───────────────────┘
 ```
@@ -794,11 +819,15 @@ Each node type uses one of these specialized data layouts:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         'compound' Structure                               │
 ├──────────────────┬──────────────────┬──────────────────┬──────────────────┤
-│ declarations     │ statements       │ scope_idx        │     padding      │
-│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (SymIdx_t)    │    (8 bytes)     │
-│ 2 bytes          │ 2 bytes          │ 2 bytes          │                  │
-│ [unused in C99]  │ → first stmt     │ → scope depth    │                  │
-└──────────────────┴──────────────────┴──────────────────┴──────────────────┘
+│ declarations     │ statements       │ scope_idx        │ c99_mixed_count  │
+│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (SymIdx_t)    │ (unsigned short) │
+│ 2 bytes          │ 2 bytes          │ 2 bytes          │ 2 bytes          │
+│ [unused in C99]  │ → first stmt     │ → scope depth    │ → mixed decl cnt │
+├──────────────────┼──────────────────┴──────────────────┴──────────────────┤
+│ next_stmt        │                    padding (4 bytes)                   │
+│ (ASTNodeIdx_t)   │                                                        │
+│ 2 bytes          │                                                        │
+└──────────────────┴────────────────────────────────────────────────────────┘
 ```
 **Used by**: AST_STMT_COMPOUND
 
@@ -807,11 +836,13 @@ Each node type uses one of these specialized data layouts:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                       'conditional' Structure                              │
 ├──────────────────┬──────────────────┬──────────────────┬──────────────────┤
-│ condition        │ then_stmt        │ else_stmt        │     padding      │
-│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │    (8 bytes)     │
-│ 2 bytes          │ 2 bytes          │ 2 bytes          │                  │
-│ → bool expr      │ → true branch    │ → false branch   │                  │
-└──────────────────┴──────────────────┴──────────────────┴──────────────────┘
+│ condition        │ then_stmt        │ else_stmt        │ next_stmt        │
+│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │
+│ 2 bytes          │ 2 bytes          │ 2 bytes          │ 2 bytes          │
+│ → bool expr      │ → true branch    │ → false branch   │ → next statement │
+├──────────────────┴──────────────────┴──────────────────┼──────────────────┤
+│                    padding (6 bytes)                   │                  │
+└─────────────────────────────────────────────────────────┴──────────────────┘
 ```
 **Used by**: AST_STMT_IF, AST_STMT_WHILE, AST_STMT_SWITCH
 
@@ -820,11 +851,13 @@ Each node type uses one of these specialized data layouts:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           'call' Structure                                 │
 ├──────────────────┬──────────────────┬──────────────────┬─────┬─────────────┤
-│ function         │ arguments        │ return_type      │ arg │   padding   │
-│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (TypeIdx_t)      │count│  (7 bytes)  │
-│ 2 bytes          │ 2 bytes          │ 2 bytes          │1 by │             │
-│ → func name/ptr  │ → first arg      │ → return type    │     │             │
-└──────────────────┴──────────────────┴──────────────────┴─────┴─────────────┘
+│ function         │ arguments        │ return_type      │ arg │  next_stmt  │
+│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (TypeIdx_t)      │count│(ASTNodeIdx_t)│
+│ 2 bytes          │ 2 bytes          │ 2 bytes          │1 by │  2 bytes    │
+│ → func name/ptr  │ → first arg      │ → return type    │     │→next stmt   │
+├──────────────────┴──────────────────┴──────────────────┴─────┼─────────────┤
+│                        padding (5 bytes)                     │             │
+└───────────────────────────────────────────────────────────────┴─────────────┘
 ```
 **Used by**: AST_EXPR_CALL, AST_TYPE_FUNCTION
 
@@ -833,11 +866,13 @@ Each node type uses one of these specialized data layouts:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                       'declaration' Structure                              │
 ├──────────────────┬──────────────────┬──────────────────┬─────┬─────────────┤
-│ symbol_idx       │ type_idx         │ initializer      │stor │   padding   │
-│ (SymIdx_t)    │ (TypeIdx_t)      │ (ASTNodeIdx_t)   │class│  (7 bytes)  │
-│ 2 bytes          │ 2 bytes          │ 2 bytes          │1 by │             │
-│ → symbol table   │ → type info      │ → init expr      │     │             │
-└──────────────────┴──────────────────┴──────────────────┴─────┴─────────────┘
+│ symbol_idx       │ type_idx         │ initializer      │stor │  next_stmt  │
+│ (SymIdx_t)    │ (TypeIdx_t)      │ (ASTNodeIdx_t)   │class│(ASTNodeIdx_t)│
+│ 2 bytes          │ 2 bytes          │ 2 bytes          │1 by │  2 bytes    │
+│ → symbol table   │ → type info      │ → init expr      │     │→next stmt   │
+├──────────────────┴──────────────────┴──────────────────┴─────┼─────────────┤
+│                        padding (4 bytes)                     │             │
+└───────────────────────────────────────────────────────────────┴─────────────┘
 ```
 **Used by**: AST_VAR_DECL, AST_FUNCTION_DEF, AST_PARAM_DECL, AST_TYPEDEF_DECL
 ```
@@ -893,18 +928,19 @@ AST_FUNCTION_DEF
 AST nodes use different union structures to efficiently pack data based on their specific needs:
 
 ### `children` Structure
-**Size**: 14 bytes  
+**Size**: 12 bytes  
 **Fields**:
 - `child1` (ASTNodeIdx_t, 2 bytes): First child node
 - `child2` (ASTNodeIdx_t, 2 bytes): Second child node  
 - `child3` (ASTNodeIdx_t, 2 bytes): Third child node
 - `child4` (ASTNodeIdx_t, 2 bytes): Fourth child node
-- `padding` (6 bytes): Unused space
+- `padding` (4 bytes): Unused space
 
 **Usage**: Generic nodes that need up to 4 child references (compound statements, conditional expressions, etc.)
+**Note**: `next_stmt` moved to header - no longer in union structures
 
 ### `binary` Structure  
-**Size**: 14 bytes  
+**Size**: 12 bytes  
 **Fields**:
 - `left` (ASTNodeIdx_t, 2 bytes): Left operand/child
 - `right` (ASTNodeIdx_t, 2 bytes): Right operand/child
@@ -913,12 +949,13 @@ AST nodes use different union structures to efficiently pack data based on their
   - `string_pos` (sstore_pos_t): String store position
   - `long_value` (int64_t): Integer value
   - `float_value` (double): Floating-point value
-- `padding` (2 bytes): Unused space
+- `padding` (0 bytes): No padding needed (exactly 12 bytes)
 
 **Usage**: Binary operations, assignments, literals, identifiers
+**Note**: `next_stmt` moved to header - no longer in union structures
 
 ### `unary` Structure
-**Size**: 14 bytes  
+**Size**: 12 bytes  
 **Fields**:
 - `operand` (ASTNodeIdx_t, 2 bytes): Operand node
 - `operator` (TokenID_t, 2 bytes): Operator type
@@ -926,51 +963,58 @@ AST nodes use different union structures to efficiently pack data based on their
   - `int_value` (int, 4 bytes): Integer data
   - `float_value` (float, 4 bytes): Float data  
   - `string_pos` (sstore_pos_t, 2 bytes): String position
-- `padding` (6 bytes): Unused space
+- `padding` (4 bytes): Unused space
 
 **Usage**: Unary operations, type qualifiers, storage specifiers
+**Note**: `next_stmt` moved to header - no longer in union structures
 
 ### `compound` Structure
-**Size**: 14 bytes  
+**Size**: 12 bytes  
 **Fields**:
 - `declarations` (ASTNodeIdx_t, 2 bytes): First declaration (C89 style, unused in C99)
 - `statements` (ASTNodeIdx_t, 2 bytes): First statement in block
 - `scope_idx` (SymIdx_t, 2 bytes): Scope depth/identifier
-- `padding` (8 bytes): Unused space
+- `c99_mixed_count` (unsigned short, 2 bytes): Mixed declaration count
+- `padding` (4 bytes): Unused space
 
 **Usage**: Compound statements (blocks with curly braces)
+**Note**: `next_stmt` moved to header - no longer in union structures
 
 ### `conditional` Structure  
-**Size**: 14 bytes  
+**Size**: 12 bytes  
 **Fields**:
 - `condition` (ASTNodeIdx_t, 2 bytes): Condition expression
 - `then_stmt` (ASTNodeIdx_t, 2 bytes): True/body statement
 - `else_stmt` (ASTNodeIdx_t, 2 bytes): False statement (optional)
-- `padding` (8 bytes): Unused space
+- `padding` (6 bytes): Unused space
 
 **Usage**: If statements, while loops, switch statements
+**Note**: `next_stmt` moved to header - no longer in union structures
 
 ### `call` Structure
-**Size**: 14 bytes  
+**Size**: 12 bytes  
 **Fields**:
 - `function` (ASTNodeIdx_t, 2 bytes): Function being called
 - `arguments` (ASTNodeIdx_t, 2 bytes): First argument
 - `return_type` (TypeIdx_t, 2 bytes): Expected return type
 - `arg_count` (char, 1 byte): Number of arguments
-- `padding` (7 bytes): Unused space
+- `padding` (5 bytes): Unused space
 
 **Usage**: Function calls, function type definitions
+**Note**: `next_stmt` moved to header - no longer in union structures
 
 ### `declaration` Structure
-**Size**: 14 bytes  
+**Size**: 12 bytes  
 **Fields**:
-- `symbol_idx` (SymIdx_t, 2 bytes): Symbol table entry
-- `type_idx` (TypeIdx_t, 2 bytes): Type information
+- `symbol_idx` (SymIdx_t, 2 bytes): Symbol table index
+- `type_idx` (TypeIdx_t, 2 bytes): Type information index  
 - `initializer` (ASTNodeIdx_t, 2 bytes): Initialization expression
 - `storage_class` (char, 1 byte): Storage class specifier
-- `padding` (7 bytes): Unused space
+- `c99_specifier` (unsigned char, 1 byte): C99 inline/restrict flags
+- `padding` (4 bytes): Unused space
 
-**Usage**: Variable declarations, function declarations, parameters
+**Usage**: Variable declarations, function definitions, parameter declarations
+**Note**: `next_stmt` moved to header - no longer in union structures
 
 ---
 
@@ -993,7 +1037,7 @@ These nodes handle program structure and special cases.
 - `child2-4`: Unused (0)
 **Links**: 
 - `child1` → First function/variable declaration in program
-- External declarations are chained via their `child2` fields
+- External declarations are chained via their `declaration.next_stmt` fields
 **Example**:
 ```c
 // Program with main function
@@ -1077,7 +1121,7 @@ AST_FUNCTION_DEF
 - `storage_class`: Storage class (auto, static, extern, register)
 **Links**:
 - `initializer` → Expression node for initialization (optional)
-- Chained via `child2` in compound statements
+- Chained via `declaration.next_stmt` in compound statements
 **Example**:
 ```c
 // int x = 42;
@@ -1258,7 +1302,7 @@ These nodes represent executable statements and control flow constructs.
 - `scope_idx` → Scope depth for symbol table
 **Links**:
 - `statements` → First statement/declaration in block
-- Statements chained via their `child2` fields
+- Statements chained via their **`next_stmt` fields** (NEW ARCHITECTURE)
 **Example**:
 ```c
 // { int x = 5; printf("%d", x); }
@@ -1274,17 +1318,17 @@ AST_STMT_COMPOUND
 **Structure**: [`children`](#1-children-structure-generic-multi-child)  
 **Parameters**:
 - `child1` → Expression to evaluate
-- `child2` → Next statement (for chaining)
-- `child3-4`: 0 (unused)
+- `child2-4`: 0 (unused)
+- `next_stmt` → Next statement (universal chaining)
 **Links**:
 - `child1` → Expression node
-- `child2` → Next statement in sequence
+- `next_stmt` → Next statement in sequence
 **Example**:
 ```c
 // x = 42;
 AST_STMT_EXPRESSION
 ├─ child1 → AST_EXPR_ASSIGN (x = 42)
-└─ child2 → next statement (chaining)
+└─ next_stmt → next statement (chaining)
 ```
 
 ### AST_STMT_IF (52)
@@ -1666,7 +1710,7 @@ void traverse_expression(ASTNodeIdx_t node_idx) {
 }
 ```
 
-#### 2. Statement Chain Traversal
+#### 2. Universal Statement Chain Traversal (NEW ARCHITECTURE)
 ```c
 void traverse_statement_chain(ASTNodeIdx_t stmt_idx) {
     ASTNodeIdx_t current = stmt_idx;
@@ -1677,8 +1721,46 @@ void traverse_statement_chain(ASTNodeIdx_t stmt_idx) {
         // Process current statement
         process_statement(&stmt);
         
-        // Move to next statement in chain
-        current = stmt.children.child2;  // Most statements chain via child2
+        // Move to next statement using universal next_stmt field
+        // ALL node structures now have this field!
+        switch (stmt.type) {
+            case AST_STMT_FOR:
+            case AST_EXPR_CONDITIONAL:
+            case AST_STMT_LABEL:
+            case AST_STMT_RETURN:
+                current = stmt.children.next_stmt;
+                break;
+            case AST_EXPR_BINARY_OP:
+            case AST_EXPR_ASSIGN:
+            case AST_EXPR_IDENTIFIER:
+            case AST_LIT_INTEGER:
+            case AST_LIT_STRING:
+                current = stmt.binary.next_stmt;
+                break;
+            case AST_STMT_IF:
+            case AST_STMT_WHILE:
+            case AST_STMT_SWITCH:
+                current = stmt.conditional.next_stmt;
+                break;
+            case AST_STMT_COMPOUND:
+                current = stmt.compound.next_stmt;
+                break;
+            case AST_VAR_DECL:
+            case AST_FUNCTION_DEF:
+            case AST_PARAM_DECL:
+                current = stmt.declaration.next_stmt;
+                break;
+            case AST_EXPR_CALL:
+                current = stmt.call.next_stmt;
+                break;
+            case AST_EXPR_UNARY_OP:
+            case AST_EXPR_SIZEOF:
+                current = stmt.unary.next_stmt;
+                break;
+            default:
+                current = 0; // Stop traversal for unknown types
+                break;
+        }
     }
 }
 ```
@@ -1758,10 +1840,12 @@ To verify correct AST structure:
 ## Node Linking Patterns
 
 ### Sequential Chaining
-- **Statements in compound blocks**: Linked via `child2` field
-- **Function arguments**: Linked via `child2` field  
-- **Parameter lists**: Linked via `child2` field
-- **External declarations**: Linked via `child2` field
+- **ALL STATEMENTS**: **Universal chaining via `next_stmt` field** (NEW ARCHITECTURE)
+- **Function arguments**: Linked via `child2` field (unchanged)  
+- **Parameter lists**: Linked via `child2` field (unchanged)
+- **External declarations**: Linked via `next_stmt` field (NEW ARCHITECTURE)
+
+**IMPORTANT**: The new architecture adds a `next_stmt` field to ALL AST node union structures, enabling universal statement chaining without the previous structural limitations.
 
 ### Hierarchical Linking
 - **Program structure**: AST_PROGRAM → declarations → statements → expressions

@@ -425,8 +425,8 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                             tac_build_from_ast(builder, decl);
                         }
                         
-                        // Move to the next declaration in the chain
-                        ASTNodeIdx_t next_decl = decl_node.children.child2;  // Follow the chain
+                        // Move to the next declaration in the chain - direct access!
+                        ASTNodeIdx_t next_decl = decl_node.next_stmt;
                         
                         // Cycle detection
                         if (next_decl == decl) {
@@ -453,8 +453,8 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                             tac_build_from_ast(builder, decl);
                         }
                         
-                        // Move to the next declaration in the chain
-                        ASTNodeIdx_t next_decl = decl_node.children.child2;  // Follow the chain
+                        // Move to the next declaration in the chain - direct access!
+                        ASTNodeIdx_t next_decl = decl_node.next_stmt;
                         
                         // Cycle detection
                         if (next_decl == decl) {
@@ -837,16 +837,15 @@ static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
 }
 
 /**
- * @brief Translate compound statement - fixed to properly follow parser's AST structure
+ * @brief Translate compound statement - uses universal next_stmt approach
  */
 static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
-    // The parser stores statements chained using child2 as 'next' pointer
-    // starting from child1 of the compound statement
-    // BUT: Some parsers store the first statement in child2 instead of child1
+    // With universal next_stmt architecture, statements are chained consistently
+    // First statement stored in child1 of compound node
     
     ASTNodeIdx_t current_stmt = ast_node->children.child1;
     if (current_stmt == 0) {
-        // Fallback: try child2 if child1 is empty
+        // Legacy fallback: try child2 if child1 is empty (for backward compatibility)
         current_stmt = ast_node->children.child2;
     }
     
@@ -867,31 +866,9 @@ static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
             tac_build_from_ast(builder, current_stmt);
         }
         
-        // Move to the next statement in the chain
+        // Move to the next statement in the chain - now extremely simple!
         if (stmt_node.type != AST_FREE) {
-            ASTNodeIdx_t next_stmt = 0;
-            
-            // Check if this is a conditional statement that uses child4 for chaining
-            if (stmt_node.type == AST_STMT_IF || stmt_node.type == AST_STMT_WHILE) {
-                next_stmt = stmt_node.children.child4;  // Follow the special chain
-            } else if (stmt_node.type == AST_STMT_COMPOUND || 
-                       stmt_node.type == AST_STMT_RETURN ||
-                       stmt_node.type == AST_VAR_DECL ||
-                       stmt_node.type == AST_FUNCTION_DEF ||
-                       stmt_node.type == AST_EXPR_ASSIGN ||
-                       stmt_node.type == AST_STMT_EXPRESSION) {
-                // These statement types use child2 for chaining to the next statement
-                next_stmt = stmt_node.children.child2;  // Follow the normal chain
-            } else {
-                // Other expression types don't use child2 for statement chaining
-                // child2 is typically the right operand, not the next statement
-                // Skip binary expressions that are not statements
-                if (stmt_node.type == AST_EXPR_BINARY_OP) {
-                    next_stmt = 0;  // Stop chaining
-                } else {
-                    next_stmt = 0;  // Stop chaining
-                }
-            }
+            ASTNodeIdx_t next_stmt = stmt_node.next_stmt;  // Direct access from header!
             
             // Prevent infinite loops by checking if we're pointing to ourselves
             if (next_stmt == current_stmt) {

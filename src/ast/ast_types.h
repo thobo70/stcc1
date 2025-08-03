@@ -160,15 +160,16 @@ typedef struct ASTNode {
     ASTNodeFlags flags;     // 2 bytes - compiler phase flags
     TokenIdx_t token_idx;   // 4 bytes - source token reference
     TypeIdx_t type_idx;     // 2 bytes - type information index
+    ASTNodeIdx_t next_stmt; // 2 bytes - universal statement chaining (moved from union)
 
-    // Child nodes - flexible organization (14 bytes remaining)
+    // Child nodes - flexible organization (12 bytes remaining)
     union {
         struct {
             ASTNodeIdx_t child1,
                      child2,
                      child3,
                      child4;  // 8 bytes
-            char padding[6];                              // 6 bytes
+            char padding[4];                              // 4 bytes (increased by 2 from union removal)
         } children;
 
         struct {
@@ -180,7 +181,7 @@ typedef struct ASTNode {
                 int64_t long_value;                          // Integer literal
                 double float_value;                       // Float literal
             } value;                                      // 8 bytes
-            char padding[2];                              // 2 bytes
+            char padding[0];                              // 0 bytes (no padding needed - exactly 12 bytes)
         } binary;
 
         struct {
@@ -191,7 +192,7 @@ typedef struct ASTNode {
                 float float_value;                        // 4 bytes
                 sstore_pos_t string_pos;                  // 2 bytes
             } data;                                       // 4 bytes
-            char padding[2];                              // 2 bytes
+            char padding[4];                              // 4 bytes (increased by 2)
         } unary;
 
         struct {
@@ -199,14 +200,14 @@ typedef struct ASTNode {
             ASTNodeIdx_t statements;                      // 2 bytes
             SymIdx_t scope_idx;                        // 2 bytes
             unsigned short c99_mixed_count;               // 2 bytes - mixed decl count
-            char padding[6];                              // 6 bytes
+            char padding[4];                              // 4 bytes (no change)
         } compound;
 
         struct {
             ASTNodeIdx_t condition;                       // 2 bytes
             ASTNodeIdx_t then_stmt;                       // 2 bytes
             ASTNodeIdx_t else_stmt;                       // 2 bytes
-            char padding[8];                              // 8 bytes
+            char padding[6];                              // 6 bytes (no change)
         } conditional;
 
         struct {
@@ -214,7 +215,7 @@ typedef struct ASTNode {
             ASTNodeIdx_t arguments;                       // 2 bytes
             TypeIdx_t return_type;                        // 2 bytes
             char arg_count;                               // 1 byte
-            char padding[7];                              // 7 bytes
+            char padding[5];                              // 5 bytes (no change)
         } call;
 
         struct {
@@ -223,14 +224,14 @@ typedef struct ASTNode {
             ASTNodeIdx_t initializer;                     // 2 bytes
             char storage_class;                           // 1 byte
             unsigned char c99_specifier;                  // 1 byte - inline/restrict flags
-            char padding[6];                              // 6 bytes
+            char padding[4];                              // 4 bytes (no change)
         } declaration;
         
         // C99-specific structures
         struct {
             sstore_pos_t field_name;                      // 2 bytes - field name
             ASTNodeIdx_t value_expr;                      // 2 bytes - initialization value
-            char padding[10];                             // 10 bytes
+            char padding[8];                              // 8 bytes (no change)
         } designated;
         
         struct {
@@ -246,11 +247,11 @@ typedef struct ASTNode {
                     char padding[1];                      // 1 byte
                 } vla_info;
             } c99_data;                                   // 4 bytes
-            char padding[6];                              // 6 bytes
+            char padding[6];                              // 6 bytes (increased by 2)
         } c99_enhanced;
 
         // Raw access for maximum flexibility
-        char raw_data[14];                                // 14 bytes total
+        char raw_data[12];                                // 12 bytes total (reduced from 14)
     };
 } ASTNode;
 

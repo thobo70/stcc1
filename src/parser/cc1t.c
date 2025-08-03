@@ -302,13 +302,18 @@ static void print_ast_tree_recursive(ASTNodeIdx_t idx, const char* prefix, int i
                 while (current_stmt != 0 && child_count < 8) {  // Limit to prevent infinite loops
                     children[child_count++] = current_stmt;
                     
-                    // Get the next statement in the chain (stored in child2)
+                    // Get the next statement using direct header access
                     HBNode *stmt_node = HBGet(current_stmt, HBMODE_AST);
-                    if (stmt_node && stmt_node->ast.children.child2 != 0 && 
-                        stmt_node->ast.children.child2 != current_stmt) {  // Prevent cycles
-                        current_stmt = stmt_node->ast.children.child2;
+                    if (stmt_node) {
+                        ASTNodeIdx_t next_stmt = stmt_node->ast.next_stmt;  // Direct access!
+                        
+                        if (next_stmt != 0 && next_stmt != current_stmt) {  // Prevent cycles
+                            current_stmt = next_stmt;
+                        } else {
+                            break;  // End of chain
+                        }
                     } else {
-                        break;  // End of chain
+                        break;
                     }
                 }
             }
