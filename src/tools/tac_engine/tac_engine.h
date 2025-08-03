@@ -109,6 +109,11 @@ typedef struct tac_engine_config {
     bool enable_tracing;          // Enable instruction tracing
     bool enable_bounds_check;     // Enable array bounds checking
     bool enable_type_check;       // Enable type checking
+    
+    // Symbol table integration for variable name resolution
+    const char* symtab_file;      // Path to symbol table file (optional)
+    const char* sstore_file;      // Path to string store file (optional)
+    bool enable_symbol_resolution; // Enable symbol name resolution for debugging
 } tac_engine_config_t;
 
 /**

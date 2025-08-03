@@ -84,6 +84,16 @@ TACValidationResult validate_tac_execution_with_label(const char* tac_file,
 uint16_t extract_main_label_from_tac_file(const char* tac_file);
 TACValidationResult validate_tac_execution_with_main(const char* tac_file, 
                                                     int expected_return_value);
+TACValidationResult validate_tac_execution_with_symbols(const char* tac_file,
+                                                       const char* symtab_file,
+                                                       const char* sstore_file,
+                                                       int expected_return_value);
+
+// Symbol table detection utilities
+bool detect_symbol_files(const char* base_filename, 
+                        char* symtab_path, 
+                        char* sstore_path, 
+                        size_t path_size);
 int load_tac_from_file(const char* filename, 
                       TACInstruction** instructions, 
                       uint32_t* count);

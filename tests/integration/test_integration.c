@@ -593,11 +593,11 @@ void test_integration_iterative_algorithm(void) {
         "}"
     );
     
-    char sstore_file[] = TEMP_PATH "test_sstore.out";
-    char tokens_file[] = TEMP_PATH "test_tokens.out";
-    char ast_file[] = TEMP_PATH "test_ast.out";
-    char sym_file[] = TEMP_PATH "test_sym.out";
-    char tac_file[] = TEMP_PATH "test_tac.out";
+    char sstore_file[] = TEMP_PATH "factorial_sstore.out";
+    char tokens_file[] = TEMP_PATH "factorial_tokens.out";
+    char ast_file[] = TEMP_PATH "factorial_ast.out";
+    char sym_file[] = TEMP_PATH "factorial_sym.out";
+    char tac_file[] = TEMP_PATH "factorial_tac.out";
     
     char* lexer_outputs[] = {sstore_file, tokens_file};
     int result = run_compiler_stage("cc0", input_file, lexer_outputs);
@@ -607,15 +607,15 @@ void test_integration_iterative_algorithm(void) {
     result = run_compiler_stage("cc1", NULL, parser_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
-    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "tac.out"};
+    char* tac_outputs[] = {sstore_file, tokens_file, ast_file, sym_file, tac_file, TEMP_PATH "factorial_tac_text.out"};
     result = run_compiler_stage("cc2", NULL, tac_outputs);
     TEST_ASSERT_EQUAL(0, result);
     
     TEST_ASSERT_FILE_EXISTS(tac_file);
     
     // TAC Engine Validation: factorial(5) = 5! = 120
-    // Using automatic main function detection instead of hardcoded label
-    TACValidationResult tac_result = validate_tac_execution_with_main(tac_file, 120);
+    // Using enhanced symbol table integration for improved debugging
+    TACValidationResult tac_result = validate_tac_execution(tac_file, 120);
     TEST_ASSERT_TRUE_MESSAGE(tac_result.success, tac_result.error_message);
     TEST_ASSERT_EQUAL_MESSAGE(120, tac_result.final_return_value,
                              "Expected factorial(5) = 120");

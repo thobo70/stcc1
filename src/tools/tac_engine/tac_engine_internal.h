@@ -110,6 +110,26 @@ typedef struct tac_label_table {
 } tac_label_table_t;
 
 /**
+ * @brief Symbol table integration for TAC engine
+ */
+typedef struct tac_symbol_context {
+    bool loaded;                    // Symbol table loaded flag
+    char symtab_filename[256];      // Symbol table file path
+    char sstore_filename[256];      // String store file path
+    
+    // Symbol resolution cache (for performance)
+    struct {
+        uint16_t symbol_id;         // Cached symbol ID
+        char name[64];              // Cached symbol name
+        uint8_t type;               // Cached type information
+        bool valid;                 // Cache entry valid flag
+    } symbol_cache[256];            // LRU cache for symbol resolution
+    
+    uint32_t cache_hits;            // Performance statistics
+    uint32_t cache_misses;
+} tac_symbol_context_t;
+
+/**
  * @brief Main engine structure
  */
 struct tac_engine {
@@ -143,6 +163,9 @@ struct tac_engine {
     uint32_t last_call_instruction;  // Address of last CALL instruction for return value handling
     uint32_t param_counter;          // Counter for parameter passing
     tac_value_t param_stack[10];     // Temporary parameter storage for function calls
+
+    // Symbol table integration
+    tac_symbol_context_t symbols;
 
     // Debugging support
     tac_hook_entry_t* hooks;

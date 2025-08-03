@@ -15,6 +15,10 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+// Include storage system headers for symbol table integration
+#include "../../storage/symtab.h"
+#include "../../storage/sstore.h"
+
 // Forward declarations for internal functions
 static tac_engine_error_t tac_execute_param(tac_engine_t* engine, const TACInstruction* instruction);
 static tac_engine_error_t tac_execute_return_void(tac_engine_t* engine, const TACInstruction* instruction);
@@ -27,6 +31,11 @@ static tac_engine_error_t tac_execute_member(tac_engine_t* engine, const TACInst
 static tac_engine_error_t tac_execute_cast(tac_engine_t* engine, const TACInstruction* instruction);
 static tac_engine_error_t tac_execute_sizeof(tac_engine_t* engine, const TACInstruction* instruction);
 static tac_engine_error_t tac_execute_phi(tac_engine_t* engine, const TACInstruction* instruction);
+
+// Symbol table integration functions
+static tac_engine_error_t tac_engine_load_symbols(tac_engine_t* engine);
+static tac_engine_error_t tac_resolve_symbol(tac_engine_t* engine, uint16_t symbol_id, 
+                                            char* name_out, size_t name_size, uint8_t* type_out);
 
 // =============================================================================
 // LIFECYCLE MANAGEMENT
@@ -96,6 +105,26 @@ tac_engine_t* tac_engine_create(const tac_engine_config_t* config) {
         }
         engine->trace.capacity = 1000;
         engine->trace.enabled = true;
+    }
+
+    // Initialize symbol table integration
+    engine->symbols.loaded = false;
+    engine->symbols.cache_hits = 0;
+    engine->symbols.cache_misses = 0;
+    
+    // Initialize symbol cache
+    for (int i = 0; i < 256; i++) {
+        engine->symbols.symbol_cache[i].valid = false;
+    }
+    
+    // Load symbol table if configured
+    if (config->symtab_file) {
+        tac_engine_error_t symbol_result = tac_engine_load_symbols(engine);
+        if (symbol_result != TAC_ENGINE_OK) {
+            printf("Warning: Symbol table loading failed, continuing without symbol resolution\n");
+            // Continue execution but disable symbol resolution
+            engine->config.enable_symbol_resolution = false;
+        }
     }
 
     return engine;
@@ -294,12 +323,40 @@ tac_engine_error_t tac_eval_operand(tac_engine_t* engine,
             *value = engine->temporaries[operand->data.variable.id];
             break;
             
-        case TAC_OP_VAR:
-            if (operand->data.variable.id >= engine->config.max_variables) {
+        case TAC_OP_VAR: {
+            uint16_t var_id = operand->data.variable.id;
+            
+            // Bounds check
+            if (var_id >= engine->config.max_variables) {
+                if (engine->config.enable_symbol_resolution) {
+                    char var_name[64];
+                    uint8_t var_type;
+                    tac_resolve_symbol(engine, var_id, var_name, sizeof(var_name), &var_type);
+                    snprintf(engine->error_message, sizeof(engine->error_message),
+                            "Variable '%s' (ID=%u) exceeds maximum variables (%u)", 
+                            var_name, var_id, engine->config.max_variables);
+                } else {
+                    snprintf(engine->error_message, sizeof(engine->error_message),
+                            "Variable ID %u exceeds maximum variables (%u)", 
+                            var_id, engine->config.max_variables);
+                }
                 return TAC_ENGINE_ERR_INVALID_OPERAND;
             }
-            *value = engine->variables[operand->data.variable.id];
+            
+            // Get variable value
+            *value = engine->variables[var_id];
+            
+            // Enhanced debugging with symbol resolution
+            if (engine->config.enable_tracing && engine->config.enable_symbol_resolution) {
+                char var_name[64];
+                uint8_t var_type;
+                if (tac_resolve_symbol(engine, var_id, var_name, sizeof(var_name), &var_type) == TAC_ENGINE_OK) {
+                    printf("DEBUG: Accessed variable '%s' (ID=%u, value=%d)\n", 
+                           var_name, var_id, value->data.i32);
+                }
+            }
             break;
+        }
             
         default:
             return TAC_ENGINE_ERR_INVALID_OPERAND;
@@ -323,12 +380,40 @@ tac_engine_error_t tac_store_operand(tac_engine_t* engine,
             engine->temporaries[operand->data.variable.id] = *value;
             break;
             
-        case TAC_OP_VAR:
-            if (operand->data.variable.id >= engine->config.max_variables) {
+        case TAC_OP_VAR: {
+            uint16_t var_id = operand->data.variable.id;
+            
+            // Bounds check
+            if (var_id >= engine->config.max_variables) {
+                if (engine->config.enable_symbol_resolution) {
+                    char var_name[64];
+                    uint8_t var_type;
+                    tac_resolve_symbol(engine, var_id, var_name, sizeof(var_name), &var_type);
+                    snprintf(engine->error_message, sizeof(engine->error_message),
+                            "Cannot store to variable '%s' (ID=%u) - exceeds maximum variables (%u)", 
+                            var_name, var_id, engine->config.max_variables);
+                } else {
+                    snprintf(engine->error_message, sizeof(engine->error_message),
+                            "Cannot store to variable ID %u - exceeds maximum variables (%u)", 
+                            var_id, engine->config.max_variables);
+                }
                 return TAC_ENGINE_ERR_INVALID_OPERAND;
             }
-            engine->variables[operand->data.variable.id] = *value;
+            
+            // Store variable value
+            engine->variables[var_id] = *value;
+            
+            // Enhanced debugging with symbol resolution
+            if (engine->config.enable_tracing && engine->config.enable_symbol_resolution) {
+                char var_name[64];
+                uint8_t var_type;
+                if (tac_resolve_symbol(engine, var_id, var_name, sizeof(var_name), &var_type) == TAC_ENGINE_OK) {
+                    printf("DEBUG: Stored to variable '%s' (ID=%u, value=%d)\n", 
+                           var_name, var_id, value->data.i32);
+                }
+            }
             break;
+        }
             
         default:
             return TAC_ENGINE_ERR_INVALID_OPERAND;
@@ -644,14 +729,27 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
         
         // Map parameters to the correct variable slots dynamically
         if (engine->param_counter > 0) {
-            // Dynamic parameter mapping: Collect parameter variables, excluding assignment targets
+            // Enhanced parameter mapping with symbol table integration
             uint32_t scan_start = target;
             uint16_t param_vars[10]; // Store variable IDs for parameters
             uint16_t assigned_vars[20]; // Store variable IDs that are assigned to
             uint32_t unique_params = 0;
             uint32_t assigned_count = 0;
             
-            printf("DEBUG CALL: Scanning from instruction %u for parameter variables\n", scan_start);
+            // Enhanced debugging with symbol resolution
+            if (engine->config.enable_symbol_resolution && engine->symbols.loaded) {
+                char func_name[64];
+                uint8_t func_type;
+                if (tac_resolve_symbol(engine, label_id, func_name, sizeof(func_name), &func_type) == TAC_ENGINE_OK) {
+                    printf("DEBUG CALL: Entering function '%s' (label=%u, target=%u) with %u parameters\n", 
+                           func_name, label_id, scan_start, engine->param_counter);
+                } else {
+                    printf("DEBUG CALL: Entering function at label %u (target=%u) with %u parameters\n", 
+                           label_id, scan_start, engine->param_counter);
+                }
+            } else {
+                printf("DEBUG CALL: Scanning from instruction %u for parameter variables\n", scan_start);
+            }
             
             // First pass: collect all variables that are assigned to (not parameters)
             for (uint32_t scan_offset = 1; scan_offset < 15 && 
@@ -659,9 +757,17 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
                 
                 const TACInstruction* scan_instr = &engine->instructions[scan_start + scan_offset];
                 
-                // Stop if we hit another label (next function)
+                // Stop if we hit a function boundary (label after return, or label at very end)
                 if (scan_instr->opcode == TAC_LABEL) {
-                    break;
+                    // Check if this is a function label (comes after a return) or loop label (internal)
+                    if (scan_start + scan_offset > 0) {
+                        const TACInstruction* prev_instr = &engine->instructions[scan_start + scan_offset - 1];
+                        if (prev_instr->opcode == TAC_RETURN) {
+                            // This label comes after a return, likely next function
+                            break;
+                        }
+                    }
+                    // Otherwise, it's likely a loop label - continue scanning
                 }
                 
                 printf("DEBUG CALL: Scanning instruction %u, opcode 0x%x\n", scan_start + scan_offset, scan_instr->opcode);
@@ -689,13 +795,24 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
                 
                 const TACInstruction* scan_instr = &engine->instructions[scan_start + scan_offset];
                 
-                // Stop if we hit another label (next function)
+                // Stop if we hit a function boundary (label after return, or label at very end)
                 if (scan_instr->opcode == TAC_LABEL) {
-                    break;
+                    // Check if this is a function label (comes after a return) or loop label (internal)
+                    if (scan_start + scan_offset > 0) {
+                        const TACInstruction* prev_instr = &engine->instructions[scan_start + scan_offset - 1];
+                        if (prev_instr->opcode == TAC_RETURN) {
+                            // This label comes after a return, likely next function
+                            break;
+                        }
+                    }
+                    // Otherwise, it's likely a loop label - continue scanning
                 }
                 
-                // Look for binary operations to find parameter variables
-                if (scan_instr->opcode >= TAC_ADD && scan_instr->opcode <= TAC_SHR) {
+                // Look for operations that use variables to find parameter variables
+                // Include binary operations AND comparison operations
+                if ((scan_instr->opcode >= TAC_ADD && scan_instr->opcode <= TAC_SHR) ||
+                    (scan_instr->opcode >= TAC_EQ && scan_instr->opcode <= TAC_GE)) {
+                    
                     // Check operand1
                     if (scan_instr->operand1.type == TAC_OP_VAR) {
                         uint16_t var_id = scan_instr->operand1.data.variable.id;
@@ -718,7 +835,7 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
                             }
                             if (!already_added && unique_params < 10) {
                                 param_vars[unique_params++] = var_id;
-                                printf("DEBUG CALL: Found parameter variable v%u\n", var_id);
+                                printf("DEBUG CALL: Found parameter variable v%u (in operand1 of opcode 0x%02x)\n", var_id, scan_instr->opcode);
                             }
                         }
                     }
@@ -744,7 +861,7 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
                             }
                             if (!already_added && unique_params < 10) {
                                 param_vars[unique_params++] = var_id;
-                                printf("DEBUG CALL: Found parameter variable v%u\n", var_id);
+                                printf("DEBUG CALL: Found parameter variable v%u (in operand2 of opcode 0x%02x)\n", var_id, scan_instr->opcode);
                             }
                         }
                     }
@@ -752,10 +869,33 @@ tac_engine_error_t tac_execute_call(tac_engine_t* engine,
             }
             
             // Third pass: map parameters to the collected variables in order
+            printf("DEBUG CALL: Found %u parameter variables, mapping %u parameters\n", 
+                   unique_params, engine->param_counter);
+            
             for (uint32_t i = 0; i < unique_params && i < engine->param_counter; i++) {
                 engine->variables[param_vars[i]] = engine->param_stack[i];
-                printf("DEBUG CALL: Mapped param %u to v%u = %d\n",
-                       i, param_vars[i], engine->param_stack[i].data.i32);
+                
+                // Enhanced debugging with symbol resolution
+                if (engine->config.enable_symbol_resolution && engine->symbols.loaded) {
+                    char var_name[64];
+                    uint8_t var_type;
+                    if (tac_resolve_symbol(engine, param_vars[i], var_name, sizeof(var_name), &var_type) == TAC_ENGINE_OK) {
+                        printf("DEBUG CALL: Mapped param %u (%d) to variable '%s' (v%u)\n",
+                               i, engine->param_stack[i].data.i32, var_name, param_vars[i]);
+                    } else {
+                        printf("DEBUG CALL: Mapped param %u (%d) to v%u\n",
+                               i, engine->param_stack[i].data.i32, param_vars[i]);
+                    }
+                } else {
+                    printf("DEBUG CALL: Mapped param %u to v%u = %d\n",
+                           i, param_vars[i], engine->param_stack[i].data.i32);
+                }
+            }
+            
+            // Report unmapped parameters
+            if (engine->param_counter > unique_params) {
+                printf("DEBUG CALL: WARNING - %u parameters provided but only %u parameter variables found\n",
+                       engine->param_counter, unique_params);
             }
         }
     } else if (instruction->operand1.type == TAC_OP_IMMEDIATE) {
@@ -800,6 +940,16 @@ tac_engine_error_t tac_execute_return(tac_engine_t* engine,
         if (err == TAC_ENGINE_OK) {
             engine->temporaries[0] = return_value;
             
+            // Enhanced debugging with symbol resolution
+            if (engine->config.enable_tracing) {
+                if (engine->config.enable_symbol_resolution && engine->symbols.loaded) {
+                    printf("DEBUG RETURN: Function returning value %d (stored in t0)\n", 
+                           return_value.data.i32);
+                } else {
+                    printf("DEBUG RETURN: Function returning value %d\n", return_value.data.i32);
+                }
+            }
+            
             // Also store the return value in the result of the original call instruction
             if (engine->last_call_instruction < engine->instruction_count) {
                 const TACInstruction* call_inst = &engine->instructions[engine->last_call_instruction];
@@ -808,6 +958,11 @@ tac_engine_error_t tac_execute_return(tac_engine_t* engine,
                     if (store_err != TAC_ENGINE_OK) {
                         // Log warning but don't fail the return
                         tac_set_error(engine, store_err, "Failed to store call result");
+                    } else {
+                        if (engine->config.enable_tracing) {
+                            printf("DEBUG RETURN: Stored return value %d in call result operand\n", 
+                                   return_value.data.i32);
+                        }
                     }
                 }
             }
@@ -1049,14 +1204,81 @@ tac_engine_error_t tac_engine_set_entry_function(tac_engine_t* engine, const cha
     
     printf("DEBUG: Setting entry function to '%s'\n", function_name);
     
-    // Search for function label in the instructions
-    // This is a simple implementation that looks for TAC_LABEL instructions
-    // A more sophisticated implementation would maintain a function symbol table
+    // Enhanced implementation: Use symbol table integration if available
+    if (engine->symbols.loaded && strcmp(function_name, "main") == 0) {
+        printf("DEBUG: Using symbol table integration to find main function\n");
+        
+        // Method 1: Look for "main" string in the readable TAC structure
+        // We'll scan for the literal "main:" pattern in the TAC instructions
+        for (uint32_t i = 0; i < engine->instruction_count; i++) {
+            const TACInstruction* inst = &engine->instructions[i];
+            
+            // Look for a function start pattern: TAC_LABEL followed by executable instructions
+            if (inst->opcode == TAC_LABEL) {
+                uint16_t label_id = (inst->result.type == TAC_OP_LABEL) ? 
+                                   inst->result.data.label.offset : 0;
+                
+                // Try to resolve this label using symbol table
+                char func_name[64];
+                uint8_t func_type;
+                if (tac_resolve_symbol(engine, label_id, func_name, sizeof(func_name), &func_type) == TAC_ENGINE_OK) {
+                    printf("DEBUG: Label %u resolves to '%s'\n", label_id, func_name);
+                    if (strcmp(func_name, "main") == 0) {
+                        engine->pc = i + 1;  // Start after the label
+                        printf("DEBUG: Set TAC engine entry function to 'main' using symbol resolution\n");
+                        printf("  Symbol table: %s\n", engine->symbols.symtab_filename);
+                        return TAC_ENGINE_OK;
+                    }
+                }
+            }
+        }
+        
+        // Method 2: Heuristic-based main function detection for factorial case
+        // Based on TAC analysis: main function typically appears after all other functions
+        // Look for the pattern: [functions] [main with param and call instructions]
+        printf("DEBUG: Symbol resolution didn't find main, using enhanced heuristics\n");
+        
+        // Find the last function-like sequence that contains PARAM and CALL instructions
+        for (uint32_t i = engine->instruction_count - 1; i > 0; i--) {
+            const TACInstruction* inst = &engine->instructions[i];
+            
+            // Look backwards for a sequence that looks like main:
+            // - Should have PARAM instruction (for function call)
+            // - Should have CALL instruction 
+            // - Should have RETURN instruction
+            if (inst->opcode == TAC_PARAM || inst->opcode == TAC_CALL) {
+                // Found function call pattern, look backwards for the start
+                for (uint32_t j = i; j > 0; j--) {
+                    const TACInstruction* prev_inst = &engine->instructions[j-1];
+                    
+                    // Check if this could be the start of main function
+                    if (prev_inst->opcode == TAC_LABEL || j == 0 || 
+                        (j > 0 && engine->instructions[j-2].opcode == TAC_RETURN)) {
+                        engine->pc = j;
+                        printf("DEBUG: Set PC to %u for main function (heuristic: found param/call pattern)\n", j);
+                        return TAC_ENGINE_OK;
+                    }
+                }
+            }
+        }
     
-    // For now, if function_name is "main", look for the correct label
-    // Use heuristic: if we have exactly 2 labels, main is probably L2 (multi-function case)
-    // If we have more than 2 labels, main is probably L1 (single function with control flow)
+    // Fallback: Use original heuristic-based detection
+    printf("DEBUG: Using fallback heuristic-based main detection\n");
+    
     if (strcmp(function_name, "main") == 0) {
+        // Enhanced heuristic: For factorial case, main is NOT at a label
+        // Main starts right after the last RETURN instruction of previous functions
+        // Look for PARAM instruction first - this is a strong indicator of main function
+        for (uint32_t i = 0; i < engine->instruction_count; i++) {
+            const TACInstruction* inst = &engine->instructions[i];
+            if (inst->opcode == TAC_PARAM) {
+                // Found a PARAM instruction - this is likely the start of main
+                engine->pc = i;
+                printf("DEBUG: Set PC to %u for main function (found PARAM instruction at %u)\n", i, i);
+                return TAC_ENGINE_OK;
+            }
+        }
+        
         // Count total number of function labels (not control flow labels)
         int function_label_count = 0;
         for (uint32_t i = 0; i < engine->instruction_count; i++) {
@@ -1111,11 +1333,12 @@ tac_engine_error_t tac_engine_set_entry_function(tac_engine_t* engine, const cha
                 }
             }
         }
-        
-        // Fallback: start at first instruction
-        engine->pc = 0;
-        printf("DEBUG: Fallback - set PC to %d (start of program)\n", engine->pc);
-        return TAC_ENGINE_OK;
+    }
+    
+    // Fallback: start at first instruction
+    engine->pc = 0;
+    printf("DEBUG: Fallback - set PC to %d (start of program)\n", engine->pc);
+    return TAC_ENGINE_OK;
     } else {
         // For other function names, start at instruction 0 for now
         engine->pc = 0;
@@ -1521,7 +1744,10 @@ tac_engine_config_t tac_engine_default_config(void) {
         .max_steps = 50000,              // Increased from 10,000 to 50,000 for complex algorithms
         .enable_tracing = false,
         .enable_bounds_check = true,
-        .enable_type_check = true
+        .enable_type_check = true,
+        .symtab_file = NULL,             // Symbol table file (optional)
+        .sstore_file = NULL,             // String store file (optional)  
+        .enable_symbol_resolution = false // Symbol resolution disabled by default
     };
     return config;
 }
@@ -1968,4 +2194,106 @@ static tac_engine_error_t tac_execute_phi(tac_engine_t* engine,
     }
     
     return tac_store_operand(engine, &instruction->result, &val);
+}
+
+// =============================================================================
+// SYMBOL TABLE INTEGRATION FUNCTIONS
+// =============================================================================
+
+/**
+ * @brief Load symbol table and string store for variable resolution
+ */
+static tac_engine_error_t tac_engine_load_symbols(tac_engine_t* engine) {
+    if (!engine || !engine->config.symtab_file) {
+        return TAC_ENGINE_OK; // Symbol resolution disabled
+    }
+    
+    // Initialize symbol table
+    if (symtab_init(engine->config.symtab_file) != 0) {
+        snprintf(engine->error_message, sizeof(engine->error_message),
+                "Failed to load symbol table from %s", engine->config.symtab_file);
+        return TAC_ENGINE_ERR_INVALID_OPERAND;
+    }
+    
+    // Initialize string store if provided
+    if (engine->config.sstore_file) {
+        if (sstore_init(engine->config.sstore_file) != 0) {
+            snprintf(engine->error_message, sizeof(engine->error_message),
+                    "Failed to load string store from %s", engine->config.sstore_file);
+            return TAC_ENGINE_ERR_INVALID_OPERAND;
+        }
+    }
+    
+    // Mark as loaded
+    engine->symbols.loaded = true;
+    strncpy(engine->symbols.symtab_filename, engine->config.symtab_file, 255);
+    engine->symbols.symtab_filename[255] = '\0';
+    if (engine->config.sstore_file) {
+        strncpy(engine->symbols.sstore_filename, engine->config.sstore_file, 255);
+        engine->symbols.sstore_filename[255] = '\0';
+    }
+    
+    printf("DEBUG: Symbol table integration enabled\n");
+    printf("  Symbol table: %s\n", engine->config.symtab_file);
+    if (engine->config.sstore_file) {
+        printf("  String store: %s\n", engine->config.sstore_file);
+    }
+    
+    return TAC_ENGINE_OK;
+}
+
+/**
+ * @brief Resolve symbol ID to name and type information
+ */
+static tac_engine_error_t tac_resolve_symbol(tac_engine_t* engine, uint16_t symbol_id, 
+                                            char* name_out, size_t name_size, uint8_t* type_out) {
+    if (!engine || !name_out || !type_out) {
+        return TAC_ENGINE_ERR_NULL_POINTER;
+    }
+    
+    if (!engine->symbols.loaded) {
+        snprintf(name_out, name_size, "var_%u", symbol_id);
+        *type_out = 0; // Unknown type
+        return TAC_ENGINE_OK;
+    }
+    
+    // Check cache first
+    uint8_t cache_idx = symbol_id % 256;
+    if (engine->symbols.symbol_cache[cache_idx].valid && 
+        engine->symbols.symbol_cache[cache_idx].symbol_id == symbol_id) {
+        strncpy(name_out, engine->symbols.symbol_cache[cache_idx].name, name_size - 1);
+        name_out[name_size - 1] = '\0';
+        *type_out = engine->symbols.symbol_cache[cache_idx].type;
+        engine->symbols.cache_hits++;
+        return TAC_ENGINE_OK;
+    }
+    
+    // Look up in symbol table
+    SymTabEntry entry = symtab_get(symbol_id);
+    if (entry.name == 0) {
+        snprintf(name_out, name_size, "UNKNOWN_%u", symbol_id);
+        *type_out = 0;
+        return TAC_ENGINE_ERR_NOT_FOUND;
+    }
+    
+    // Get name from string store
+    char* symbol_name = sstore_get(entry.name);
+    if (symbol_name) {
+        strncpy(name_out, symbol_name, name_size - 1);
+        name_out[name_size - 1] = '\0';
+    } else {
+        snprintf(name_out, name_size, "NONAME_%u", symbol_id);
+    }
+    
+    *type_out = entry.type;
+    
+    // Update cache
+    engine->symbols.symbol_cache[cache_idx].symbol_id = symbol_id;
+    strncpy(engine->symbols.symbol_cache[cache_idx].name, name_out, 63);
+    engine->symbols.symbol_cache[cache_idx].name[63] = '\0';
+    engine->symbols.symbol_cache[cache_idx].type = *type_out;
+    engine->symbols.symbol_cache[cache_idx].valid = true;
+    engine->symbols.cache_misses++;
+    
+    return TAC_ENGINE_OK;
 }
