@@ -527,9 +527,10 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                         // Found in function table - emit label and update address
                         TACOperand func_label = tac_new_label(builder);
                         builder->function_table.label_ids[func_idx] = func_label.data.label.offset;
-                        builder->function_table.instruction_addresses[func_idx] = tacstore_getidx();
                         
                         tac_emit_instruction(builder, TAC_LABEL, func_label, TAC_OPERAND_NONE, TAC_OPERAND_NONE);
+                        // Record instruction address after emitting the label
+                        builder->function_table.instruction_addresses[func_idx] = tacstore_getidx();
                     } else {
                         fprintf(stderr, "ERROR: Function '%s' not found in symbol table\n", func_name);
                         builder->error_count++;
@@ -1076,10 +1077,11 @@ void tac_builder_export_function_table(TACBuilder* builder) {
     static TACPrinterFunctionTable printer_table;
     printer_table.count = builder->function_table.count;
     
-    // Copy function names and label IDs
+    // Copy function names, label IDs, and instruction addresses
     for (uint32_t i = 0; i < builder->function_table.count && i < 32; i++) {
         printer_table.function_names[i] = builder->function_table.function_names[i];
         printer_table.label_ids[i] = builder->function_table.label_ids[i];
+        printer_table.instruction_addresses[i] = builder->function_table.instruction_addresses[i];
     }
     
     // Set the function table in the TAC printer

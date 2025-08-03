@@ -274,6 +274,230 @@ typedef struct {
 
 ## Symbol Table Detailed Reference
 
+### Symbol Table Structure Overview
+
+The STCC1 symbol table is a **file-based storage system** that maintains all symbolic information during compilation. It uses **1-based indexing** where `SymIdx_t = 0` indicates an invalid/error entry.
+
+#### Physical Storage
+```
+┌─────────────────────────────────────────┐
+│           Symbol Table File             │
+│  (Binary file: *.sym, opened rb+/w+b)  │
+├─────────────────────────────────────────┤
+│ Entry 0: [INVALID - not stored]        │  ← SymIdx_t = 0 (error value)
+│ Entry 1: [First valid symbol]          │  ← SymIdx_t = 1
+│ Entry 2: [Second symbol]               │  ← SymIdx_t = 2
+│ Entry 3: [Third symbol]                │  ← SymIdx_t = 3
+│ ...                                     │
+│ Entry N: [Last symbol]                 │  ← SymIdx_t = N  
+└─────────────────────────────────────────┘
+```
+
+#### Symbol Table Entry Structure (SymTabEntry)
+
+Each symbol table entry is **exactly 40 bytes** and contains:
+
+```c
+typedef struct SymTabEntry {
+    SymType type;               // 4 bytes - Symbol type (enum)
+    sstore_pos_t name;          // 2 bytes - Name position in string store
+    SymIdx_t parent;            // 2 bytes - Parent scope index
+    SymIdx_t next, prev;        // 4 bytes - Linked list navigation (2+2)
+    SymIdx_t child, sibling;    // 4 bytes - Hierarchical navigation (2+2)
+    sstore_pos_t value;         // 2 bytes - Additional data (compatibility)
+    int line;                   // 4 bytes - Declaration line number
+    int scope_depth;            // 4 bytes - C99 block scope depth
+    unsigned int flags;         // 4 bytes - C99 attribute flags
+    TypeIdx_t type_idx;         // 2 bytes - Type information index
+    SymExtraData extra;         // 4 bytes - Extended C99 data
+} SymTabEntry;                  // Total: 40 bytes
+```
+
+#### Memory Layout Diagram
+```
+SymTabEntry (40 bytes):
+┌──────────────┬──────────────┬──────────────┬──────────────┐
+│     type     │     name     │   parent     │     next     │  0-7
+│   (4 bytes)  │   (2 bytes)  │   (2 bytes)  │   (2 bytes)  │
+├──────────────┼──────────────┼──────────────┼──────────────┤
+│     prev     │    child     │   sibling    │    value     │  8-15
+│   (2 bytes)  │   (2 bytes)  │   (2 bytes)  │   (2 bytes)  │
+├──────────────┼──────────────┼──────────────┼──────────────┤
+│              line            │          scope_depth        │  16-23
+│           (4 bytes)          │           (4 bytes)         │
+├──────────────┼──────────────┼──────────────┼──────────────┤
+│             flags            │  type_idx   │     extra     │  24-31
+│           (4 bytes)          │  (2 bytes)  │   (4 bytes)   │
+└──────────────┴──────────────┴──────────────┴──────────────┘  32-39
+```
+
+### Symbol Types (SymType Enumeration)
+
+```c
+typedef enum {
+    SYM_FREE,              // 0 - Unused entry
+    SYM_VARIABLE,          // 1 - Variables (int x, char *ptr)
+    SYM_FUNCTION,          // 2 - Functions (int func(), void main())
+    SYM_TYPEDEF,           // 3 - Type definitions (typedef int MyInt)
+    SYM_LABEL,             // 4 - Goto labels (label:)
+    SYM_ENUMERATOR,        // 5 - Enum constants (RED, GREEN, BLUE)
+    SYM_STRUCT,            // 6 - Structure definitions
+    SYM_UNION,             // 7 - Union definitions
+    SYM_ENUM,              // 8 - Enumeration definitions
+    SYM_CONSTANT,          // 9 - Named constants
+    SYM_UNKNOWN,           // 10 - Unknown/error type
+    // C99-specific extensions:
+    SYM_VLA_PARAMETER,     // 11 - Variable Length Array parameters
+    SYM_FLEXIBLE_MEMBER,   // 12 - Flexible array members
+    SYM_ANONYMOUS_STRUCT,  // 13 - Anonymous struct/union members
+    SYM_UNIVERSAL_CHAR     // 14 - Universal character names
+} SymType;
+```
+
+### C99 Symbol Flags
+
+The `flags` field contains C99-specific attributes as bit flags:
+
+```c
+#define SYM_FLAG_NONE          0x0000  // No special attributes
+#define SYM_FLAG_INLINE        0x0001  // inline functions (C99 6.7.4)
+#define SYM_FLAG_RESTRICT      0x0002  // restrict pointers (C99 6.7.3)
+#define SYM_FLAG_VLA           0x0004  // Variable Length Arrays (C99 6.7.5.2)
+#define SYM_FLAG_FLEXIBLE      0x0008  // Flexible array members (C99 6.7.2.1)
+#define SYM_FLAG_COMPLEX       0x0010  // Complex types (C99 6.2.5.11)
+#define SYM_FLAG_IMAGINARY     0x0020  // Imaginary types (C99 6.2.5.11)
+#define SYM_FLAG_VARIADIC      0x0040  // Variadic functions (C99 6.7.5.3)
+#define SYM_FLAG_UNIVERSAL_CHAR 0x0080 // Universal character names (C99 6.4.3)
+#define SYM_FLAG_DESIGNATED    0x0100  // Designated initializers (C99 6.7.8)
+#define SYM_FLAG_COMPOUND_LIT  0x0200  // Compound literals (C99 6.5.2.5)
+#define SYM_FLAG_MIXED_DECL    0x0400  // Mixed declarations (C99 6.8.2)
+#define SYM_FLAG_CONST         0x0800  // const qualified (C99 6.7.3)
+#define SYM_FLAG_VOLATILE      0x1000  // volatile qualified (C99 6.7.3)
+```
+
+### Extended Data Union (SymExtraData)
+
+The `extra` field provides type-specific additional information:
+
+```c
+typedef union SymExtraData {
+    // For Variable Length Arrays (VLA)
+    struct {
+        unsigned short size_expr_idx;  // AST index for size expression
+        unsigned char dimensions;      // Number of dimensions
+        unsigned char padding;
+    } vla;
+    
+    // For structures and unions
+    struct {
+        unsigned short field_count;    // Number of fields
+        unsigned short first_field;    // Index of first field
+    } aggregate;
+    
+    // For functions
+    struct {
+        unsigned short param_count;    // Number of parameters
+        unsigned short first_param;    // Index of first parameter
+    } function;
+    
+    unsigned int raw;                  // Raw 32-bit access
+} SymExtraData;
+```
+
+### Hierarchical Organization
+
+The symbol table supports **hierarchical scoping** through linked data structures:
+
+#### Scope Hierarchy Example
+```c
+int global_var;              // Scope 0 (global)
+
+int main() {                 // Scope 1 (function) 
+    int local_var;           // Scope 2 (function body)
+    
+    if (condition) {         // Scope 3 (if block)
+        int block_var;       // Scope 3
+    }
+    
+    while (loop) {           // Scope 4 (while block)
+        int loop_var;        // Scope 4
+    }
+}
+```
+
+#### Symbol Table Layout
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Symbol Table Entries                     │
+├─────┬─────────────┬──────┬────────┬─────────┬──────────────┤
+│ Idx │    Name     │ Type │ Scope  │ Parent  │ Relationships│
+├─────┼─────────────┼──────┼────────┼─────────┼──────────────┤
+│  1  │ global_var  │ VAR  │   0    │    0    │ next=2       │
+│  2  │ main        │ FUNC │   0    │    0    │ prev=1       │
+│  3  │ local_var   │ VAR  │   2    │    2    │ parent=2     │
+│  4  │ block_var   │ VAR  │   3    │    2    │ parent=2     │
+│  5  │ loop_var    │ VAR  │   4    │    2    │ parent=2     │
+└─────┴─────────────┴──────┴────────┴─────────┴──────────────┘
+```
+
+#### Navigation Structure
+```
+Global Scope (0)
+├─ SymIdx 1: global_var (SYM_VARIABLE, scope=0, parent=0)
+│  └─ next → SymIdx 2
+└─ SymIdx 2: main (SYM_FUNCTION, scope=0, parent=0)
+   ├─ prev ← SymIdx 1  
+   └─ Function Parameters/Body:
+      ├─ SymIdx 3: local_var (SYM_VARIABLE, scope=2, parent=2)
+      ├─ SymIdx 4: block_var (SYM_VARIABLE, scope=3, parent=2)
+      └─ SymIdx 5: loop_var (SYM_VARIABLE, scope=4, parent=2)
+```
+
+### API Operations
+
+#### Core Functions
+```c
+// Table management
+int symtab_init(const char *filename);    // Create new symbol table file
+int symtab_open(const char *filename);    // Open existing symbol table file
+void symtab_close(void);                  // Close and report statistics
+
+// Entry operations (1-based indexing)
+SymIdx_t symtab_add(SymTabEntry *entry);             // Add new symbol, returns index
+SymIdx_t symtab_update(SymIdx_t idx, SymTabEntry *entry); // Update existing symbol
+SymTabEntry symtab_get(SymIdx_t idx);                // Get symbol by index (by value)
+SymIdx_t symtab_get_count(void);                     // Get total symbol count
+```
+
+#### C99 Convenience Functions
+```c
+// High-level symbol creation
+SymIdx_t symtab_add_c99_symbol(SymType type, sstore_pos_t name, 
+                               int scope_depth, unsigned int flags);
+
+// Flag management
+int symtab_set_c99_flags(SymIdx_t idx, unsigned int flags);
+int symtab_get_c99_flags(SymIdx_t idx);
+int symtab_is_c99_feature(SymIdx_t idx, unsigned int flag);
+
+// Scoped lookups
+SymIdx_t symtab_lookup_in_scope(sstore_pos_t name, int max_scope_depth);
+
+// Extended data setters
+void symtab_set_vla_info(SymIdx_t idx, unsigned short size_expr_idx, 
+                         unsigned char dimensions);
+void symtab_set_function_info(SymIdx_t idx, unsigned short param_count,
+                              unsigned short first_param);
+```
+
+### Usage Safety Notes
+
+- ✅ **Safe**: `symtab_get()` returns entries **by value**, creating safe copies
+- ⚠️ **1-based indexing**: Valid indices start at 1, index 0 indicates error/null
+- 📁 **File-based**: All data persisted to disk, closed file shows entry count
+- 🔗 **Hierarchical**: Use `parent`, `child`, `sibling` for scope traversal
+- 🏷️ **String references**: `name` field points to string store positions
+
 ### Symbol Resolution Process
 
 1. **Parsing Phase**: Identifiers stored with `string_pos` reference

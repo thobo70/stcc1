@@ -17,6 +17,7 @@
 typedef struct {
     char* function_names[32];
     uint32_t label_ids[32];
+    uint32_t instruction_addresses[32];  // Added for TAC engine entry points
     uint32_t count;
 } TACPrinterFunctionTable;
 
