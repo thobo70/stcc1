@@ -276,7 +276,7 @@ ASTNodeIdx_t ast_build_integer_literal(ASTBuilder* builder, TokenIdx_t token,
  * @brief Build an identifier node
  */
 ASTNodeIdx_t ast_build_identifier(ASTBuilder* builder, TokenIdx_t token,
-                                 SymTabIdx_t symbol_idx) {
+                                 SymIdx_t symbol_idx) {
     ASTNodeIdx_t node_idx = ast_create_node(builder, AST_EXPR_IDENTIFIER, token);
     if (node_idx != 0) {
         HBNode* hb_node = HBGet(node_idx, HBMODE_AST);

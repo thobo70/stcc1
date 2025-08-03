@@ -118,7 +118,7 @@ ASTNodeIdx_t ast_build_string_literal(ASTBuilder* builder,
                                      sstore_pos_t string_pos);
 ASTNodeIdx_t ast_build_identifier(ASTBuilder* builder,
                      TokenIdx_t token,
-                                 SymTabIdx_t symbol_idx);
+                                 SymIdx_t symbol_idx);
 
 // List management
 ASTNodeIdx_t ast_create_list(ASTBuilder* builder);

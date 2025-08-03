@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include "../storage/sstore.h"
+#include "../storage/symtab.h"
 #include "../lexer/ctoken.h"
 #include "../ast/ast_types.h"
 
@@ -171,7 +172,7 @@ typedef struct TACTempManager {
  * @brief TAC function context
  */
 typedef struct TACFunction {
-    SymTabIdx_t symbol_idx;  // Function symbol
+    SymIdx_t symbol_idx;  // Function symbol
     TACIdx_t start_idx;      // First instruction
     TACIdx_t end_idx;        // Last instruction
     uint16_t temp_count;     // Number of temporaries used

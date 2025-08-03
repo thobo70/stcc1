@@ -9,7 +9,7 @@ All type sizes and indexing schemes have been verified against the STCC1 source 
 | Type | Size | Underlying Type | Indexing | Error Value |
 |------|------|-----------------|----------|-------------|
 | `sstore_pos_t` | 2 bytes | `uint16_t` | 0-based | `SSTORE_ERR` (0xFFFF) |
-| `SymTabIdx_t` | 2 bytes | `unsigned short` | 1-based | 0 (invalid) |
+| `SymIdx_t` | 2 bytes | `unsigned short` | 1-based | 0 (invalid) |
 | `ASTNodeIdx_t` | 2 bytes | `uint16_t` | 1-based | 0 (null node) |
 | `TokenIdx_t` | 4 bytes | `unsigned int` | 0-based | `TSTORE_ERR` (0xFFFF) |
 | `TACIdx_t` | 2 bytes | `uint16_t` | 0-based | N/A |
@@ -124,9 +124,9 @@ AST_LIT_STRING
 
 **Purpose**: Manages symbol information including scope, type, and semantic properties.
 
-**Data Type**: `SymTabIdx_t` (2 bytes, unsigned short)
+**Data Type**: `SymIdx_t` (2 bytes, unsigned short)
 
-**Access**: `symtab_get(SymTabIdx_t idx)` → `SymTabEntry`
+**Access**: `symtab_get(SymIdx_t idx)` → `SymTabEntry`
 
 ✅ **Safe**: `symtab_get()` returns the structure **by value** (not pointer), so the returned `SymTabEntry` is automatically a safe copy that won't be affected by subsequent symbol table operations.
 
@@ -135,11 +135,11 @@ AST_LIT_STRING
 typedef struct {
     sstore_pos_t name_pos;      // Position in string store
     SymType type;               // VARIABLE, FUNCTION, TYPE, etc.
-    SymTabIdx_t parent_idx;     // Parent scope (0 for global)
-    SymTabIdx_t next_idx;       // Next symbol in same scope
-    SymTabIdx_t prev_idx;       // Previous symbol in same scope
-    SymTabIdx_t child_idx;      // First child scope
-    SymTabIdx_t sibling_idx;    // Next sibling scope
+    SymIdx_t parent_idx;     // Parent scope (0 for global)
+    SymIdx_t next_idx;       // Next symbol in same scope
+    SymIdx_t prev_idx;       // Previous symbol in same scope
+    SymIdx_t child_idx;      // First child scope
+    SymIdx_t sibling_idx;    // Next sibling scope
     TypeIdx_t type_idx;         // Type information
     uint32_t value;             // Symbol value (for constants)
     uint16_t line_number;       // Source line number
@@ -294,13 +294,13 @@ Global Scope (0)
 ### Symbol Lookup Algorithm
 
 ```c
-SymTabIdx_t resolve_identifier(sstore_pos_t name_pos, SymTabIdx_t current_scope) {
+SymIdx_t resolve_identifier(sstore_pos_t name_pos, SymIdx_t current_scope) {
     // Start from current scope and work upward
-    SymTabIdx_t scope = current_scope;
+    SymIdx_t scope = current_scope;
     
     while (scope != 0) {
         // Search all symbols in current scope
-        SymTabIdx_t sym_idx = get_first_symbol_in_scope(scope);
+        SymIdx_t sym_idx = get_first_symbol_in_scope(scope);
         
         while (sym_idx != 0) {
             SymTabEntry entry = symtab_get(sym_idx);
@@ -424,7 +424,7 @@ void process_identifier(ASTNode *node) {
         // Unresolved - try to resolve now
         char *name = sstore_get(node->binary.value.string_pos);
         
-        SymTabIdx_t sym_idx = resolve_identifier(node->binary.value.string_pos, 
+        SymIdx_t sym_idx = resolve_identifier(node->binary.value.string_pos, 
                                                 current_scope);
         if (sym_idx != 0) {
             // Resolution successful
@@ -447,7 +447,7 @@ void process_variable_declaration(ASTNode *decl_node) {
     if (decl_node->type != AST_VAR_DECL) return;
     
     // Get symbol table entry
-    SymTabIdx_t sym_idx = decl_node->declaration.symbol_idx;
+    SymIdx_t sym_idx = decl_node->declaration.symbol_idx;
     SymTabEntry symbol = symtab_get(sym_idx);
     
     // Get variable name for debugging
@@ -480,7 +480,7 @@ void process_compound_statement(ASTNode *compound) {
     if (compound->type != AST_STMT_COMPOUND) return;
     
     // Enter the compound statement's scope
-    SymTabIdx_t scope_idx = compound->compound.scope_idx;
+    SymIdx_t scope_idx = compound->compound.scope_idx;
     enter_scope(scope_idx);
     
     // Process all statements in the compound
@@ -592,13 +592,13 @@ void good_if_processing(ASTNode *if_node) {
 
 ```c
 // WRONG - resolving identifier without scope context
-SymTabIdx_t bad_resolve(sstore_pos_t name_pos) {
+SymIdx_t bad_resolve(sstore_pos_t name_pos) {
     // Searches entire symbol table without considering scope
     return global_symbol_search(name_pos);  // May return wrong symbol
 }
 
 // CORRECT - scope-aware resolution
-SymTabIdx_t good_resolve(sstore_pos_t name_pos, SymTabIdx_t current_scope) {
+SymIdx_t good_resolve(sstore_pos_t name_pos, SymIdx_t current_scope) {
     // Start from current scope and work upward
     return resolve_identifier_in_scope(name_pos, current_scope);
 }
@@ -764,7 +764,7 @@ Each node type uses one of these specialized data layouts:
 │ left             │ right            │            value (union)            │
 │ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │              8 bytes                │
 │ 2 bytes          │ 2 bytes          │  ┌─────────────────────────────────┐ │
-├──────────────────┼──────────────────┤  │ symbol_idx (SymTabIdx_t)        │ │
+├──────────────────┼──────────────────┤  │ symbol_idx (SymIdx_t)        │ │
 │     padding      │                  │  │ string_pos (sstore_pos_t)       │ │
 │    (2 bytes)     │                  │  │ long_value (int64_t)            │ │
 │                  │                  │  │ float_value (double)            │ │
@@ -795,7 +795,7 @@ Each node type uses one of these specialized data layouts:
 │                         'compound' Structure                               │
 ├──────────────────┬──────────────────┬──────────────────┬──────────────────┤
 │ declarations     │ statements       │ scope_idx        │     padding      │
-│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (SymTabIdx_t)    │    (8 bytes)     │
+│ (ASTNodeIdx_t)   │ (ASTNodeIdx_t)   │ (SymIdx_t)    │    (8 bytes)     │
 │ 2 bytes          │ 2 bytes          │ 2 bytes          │                  │
 │ [unused in C99]  │ → first stmt     │ → scope depth    │                  │
 └──────────────────┴──────────────────┴──────────────────┴──────────────────┘
@@ -834,7 +834,7 @@ Each node type uses one of these specialized data layouts:
 │                       'declaration' Structure                              │
 ├──────────────────┬──────────────────┬──────────────────┬─────┬─────────────┤
 │ symbol_idx       │ type_idx         │ initializer      │stor │   padding   │
-│ (SymTabIdx_t)    │ (TypeIdx_t)      │ (ASTNodeIdx_t)   │class│  (7 bytes)  │
+│ (SymIdx_t)    │ (TypeIdx_t)      │ (ASTNodeIdx_t)   │class│  (7 bytes)  │
 │ 2 bytes          │ 2 bytes          │ 2 bytes          │1 by │             │
 │ → symbol table   │ → type info      │ → init expr      │     │             │
 └──────────────────┴──────────────────┴──────────────────┴─────┴─────────────┘
@@ -909,7 +909,7 @@ AST nodes use different union structures to efficiently pack data based on their
 - `left` (ASTNodeIdx_t, 2 bytes): Left operand/child
 - `right` (ASTNodeIdx_t, 2 bytes): Right operand/child
 - `value` (union, 8 bytes): Node-specific value data
-  - `symbol_idx` (SymTabIdx_t): Symbol table reference
+  - `symbol_idx` (SymIdx_t): Symbol table reference
   - `string_pos` (sstore_pos_t): String store position
   - `long_value` (int64_t): Integer value
   - `float_value` (double): Floating-point value
@@ -935,7 +935,7 @@ AST nodes use different union structures to efficiently pack data based on their
 **Fields**:
 - `declarations` (ASTNodeIdx_t, 2 bytes): First declaration (C89 style, unused in C99)
 - `statements` (ASTNodeIdx_t, 2 bytes): First statement in block
-- `scope_idx` (SymTabIdx_t, 2 bytes): Scope depth/identifier
+- `scope_idx` (SymIdx_t, 2 bytes): Scope depth/identifier
 - `padding` (8 bytes): Unused space
 
 **Usage**: Compound statements (blocks with curly braces)
@@ -964,7 +964,7 @@ AST nodes use different union structures to efficiently pack data based on their
 ### `declaration` Structure
 **Size**: 14 bytes  
 **Fields**:
-- `symbol_idx` (SymTabIdx_t, 2 bytes): Symbol table entry
+- `symbol_idx` (SymIdx_t, 2 bytes): Symbol table entry
 - `type_idx` (TypeIdx_t, 2 bytes): Type information
 - `initializer` (ASTNodeIdx_t, 2 bytes): Initialization expression
 - `storage_class` (char, 1 byte): Storage class specifier

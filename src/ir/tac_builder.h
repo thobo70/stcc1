@@ -83,7 +83,7 @@ TACIdx_t tac_emit_unconditional_jump(TACBuilder* builder,
 
 // Function handling
 TACIdx_t tac_emit_function_start(TACBuilder* builder,
-                     SymTabIdx_t func_symbol);
+                     SymIdx_t func_symbol);
 TACIdx_t tac_emit_function_end(TACBuilder* builder);
 TACIdx_t tac_emit_call(TACBuilder* builder,
                      TACOperand result,

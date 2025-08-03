@@ -1211,10 +1211,34 @@ tac_engine_error_t tac_engine_run(tac_engine_t* engine) {
                 
             case TAC_CALL:
                 err = tac_execute_call(engine, instruction);
+                if (err != TAC_ENGINE_OK) {
+                    engine->state = TAC_ENGINE_ERROR;
+                    return err;
+                }
+                engine->step_count++;
+                // Check max steps limit for calls too
+                if (engine->step_count >= engine->config.max_steps) {
+                    tac_set_error(engine, TAC_ENGINE_ERR_MAX_STEPS,
+                                 "Execution exceeded maximum steps: %u", engine->config.max_steps);
+                    engine->state = TAC_ENGINE_STOPPED;
+                    return TAC_ENGINE_ERR_MAX_STEPS;
+                }
                 continue; // Call handles PC update
                 
             case TAC_RETURN:
                 err = tac_execute_return(engine, instruction);
+                if (err != TAC_ENGINE_OK) {
+                    engine->state = TAC_ENGINE_ERROR;
+                    return err;
+                }
+                engine->step_count++;
+                // Check max steps limit for returns too
+                if (engine->step_count >= engine->config.max_steps) {
+                    tac_set_error(engine, TAC_ENGINE_ERR_MAX_STEPS,
+                                 "Execution exceeded maximum steps: %u", engine->config.max_steps);
+                    engine->state = TAC_ENGINE_STOPPED;
+                    return TAC_ENGINE_ERR_MAX_STEPS;
+                }
                 continue; // Return handles PC update
                 
             case TAC_PARAM:
@@ -1223,6 +1247,18 @@ tac_engine_error_t tac_engine_run(tac_engine_t* engine) {
                 
             case TAC_RETURN_VOID:
                 err = tac_execute_return_void(engine, instruction);
+                if (err != TAC_ENGINE_OK) {
+                    engine->state = TAC_ENGINE_ERROR;
+                    return err;
+                }
+                engine->step_count++;
+                // Check max steps limit for void returns too
+                if (engine->step_count >= engine->config.max_steps) {
+                    tac_set_error(engine, TAC_ENGINE_ERR_MAX_STEPS,
+                                 "Execution exceeded maximum steps: %u", engine->config.max_steps);
+                    engine->state = TAC_ENGINE_STOPPED;
+                    return TAC_ENGINE_ERR_MAX_STEPS;
+                }
                 continue; // Return handles PC update
                 
             case TAC_NEG:

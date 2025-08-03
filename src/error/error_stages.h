@@ -132,7 +132,7 @@ typedef struct {
     const char* symbol_name;
     TypeIdx_t expected_type;
     TypeIdx_t found_type;
-    SymTabIdx_t symbol_idx;
+    SymIdx_t symbol_idx;
     const char* scope_name;
     int scope_level;
 } SemanticErrorContext_t;

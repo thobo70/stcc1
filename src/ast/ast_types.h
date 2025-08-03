@@ -12,11 +12,11 @@
 
 #include <stdint.h>
 #include "../storage/sstore.h"
+#include "../storage/symtab.h"
 #include "../lexer/ctoken.h"
 
 // Forward declarations
 typedef uint16_t ASTNodeIdx_t;
-typedef uint16_t SymTabIdx_t;
 typedef uint16_t TypeIdx_t;
 
 /**
@@ -175,7 +175,7 @@ typedef struct ASTNode {
             ASTNodeIdx_t left,
                      right;                     // 4 bytes
             union {
-                SymTabIdx_t symbol_idx;                   // Symbol reference
+                SymIdx_t symbol_idx;                   // Symbol reference
                 sstore_pos_t string_pos;                  // String literal position
                 int64_t long_value;                          // Integer literal
                 double float_value;                       // Float literal
@@ -197,7 +197,7 @@ typedef struct ASTNode {
         struct {
             ASTNodeIdx_t declarations;                    // 2 bytes
             ASTNodeIdx_t statements;                      // 2 bytes
-            SymTabIdx_t scope_idx;                        // 2 bytes
+            SymIdx_t scope_idx;                        // 2 bytes
             unsigned short c99_mixed_count;               // 2 bytes - mixed decl count
             char padding[6];                              // 6 bytes
         } compound;
@@ -218,7 +218,7 @@ typedef struct ASTNode {
         } call;
 
         struct {
-            SymTabIdx_t symbol_idx;                       // 2 bytes
+            SymIdx_t symbol_idx;                       // 2 bytes
             TypeIdx_t type_idx;                           // 2 bytes
             ASTNodeIdx_t initializer;                     // 2 bytes
             char storage_class;                           // 1 byte

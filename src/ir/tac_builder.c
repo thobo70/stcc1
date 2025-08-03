@@ -504,7 +504,7 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
         case AST_FUNCTION_DEF:
             // Extract function name from symbol table using symbol_idx
             {
-                SymTabIdx_t func_symbol_idx = ast_node.declaration.symbol_idx;
+                SymIdx_t func_symbol_idx = ast_node.declaration.symbol_idx;
                 char* func_name = NULL;
                 
                 if (func_symbol_idx != 0) {
@@ -542,9 +542,19 @@ TACOperand tac_build_from_ast(TACBuilder* builder, ASTNodeIdx_t node) {
                 }
             }
             
-            // Process function body
-            if (ast_node.children.child1 != 0) {
-                tac_build_from_ast(builder, ast_node.children.child1);
+            // Process function body - check child3 first as that's where the compound statement should be
+            ASTNodeIdx_t function_body = 0;
+            if (ast_node.children.child3 != 0) {
+                // child3 typically contains the function body (compound statement)
+                function_body = ast_node.children.child3;
+            } else if (ast_node.children.child1 != 0) {
+                // fallback to child1 if child3 is not available
+                function_body = ast_node.children.child1;
+            }
+            
+            if (function_body != 0 && function_body != node) {
+                // Make sure we don't process ourselves
+                tac_build_from_ast(builder, function_body);
             }
             return TAC_OPERAND_NONE;
 
@@ -832,9 +842,14 @@ static void translate_return_stmt(TACBuilder* builder, ASTNode* ast_node) {
 static void translate_compound_stmt(TACBuilder* builder, ASTNode* ast_node) {
     // The parser stores statements chained using child2 as 'next' pointer
     // starting from child1 of the compound statement
-    // BUT: Conditional statements (if/while) use child4 for chaining to avoid union conflicts
+    // BUT: Some parsers store the first statement in child2 instead of child1
     
     ASTNodeIdx_t current_stmt = ast_node->children.child1;
+    if (current_stmt == 0) {
+        // Fallback: try child2 if child1 is empty
+        current_stmt = ast_node->children.child2;
+    }
+    
     int statement_count = 0;  // Prevent infinite loops
     const int MAX_STATEMENTS = 1000;  // Safety limit
     
@@ -906,7 +921,7 @@ static TACOperand translate_function_call(TACBuilder* builder, ASTNode* ast_node
     
     if (func_node.type == AST_EXPR_IDENTIFIER) {
         // Get the function name from symbol table using symbol index
-        SymTabIdx_t symbol_idx = func_node.binary.value.symbol_idx;
+        SymIdx_t symbol_idx = func_node.binary.value.symbol_idx;
         
         if (symbol_idx != 0) {
             SymTabEntry symbol = symtab_get(symbol_idx);
